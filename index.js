@@ -221,6 +221,39 @@ if (isProd) {
   });
 }
 
+// Universal Install Page for Merchants
+app.get('/install', (req, res) => {
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Install Shopify App</title>
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background-color: #f4f6f8; margin: 0; }
+        .card { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); width: 100%; max-width: 400px; text-align: center; }
+        h1 { font-size: 1.5rem; margin-bottom: 0.5rem; color: #202223; }
+        p { color: #6d7175; margin-bottom: 1.5rem; font-size: 0.9rem; margin-top: 0; }
+        input { width: 100%; padding: 12px; margin-bottom: 1rem; border: 1px solid #c9cccf; border-radius: 4px; box-sizing: border-box; font-size: 1rem; outline: none; transition: border-color 0.2s; }
+        input:focus { border-color: #008060; }
+        button { background-color: #008060; color: white; border: none; padding: 12px 20px; font-size: 1rem; border-radius: 4px; cursor: pointer; width: 100%; font-weight: 600; transition: background-color 0.2s; }
+        button:hover { background-color: #006e52; }
+      </style>
+    </head>
+    <body>
+      <div class="card">
+        <h1>Install Shopify App</h1>
+        <p>Enter your store's domain to install this app.</p>
+        <form action="/api/auth" method="GET">
+          <input type="text" name="shop" placeholder="e.g. my-store.myshopify.com" required />
+          <button type="submit">Install Now</button>
+        </form>
+      </div>
+    </body>
+    </html>
+  `);
+});
+
 // OAuth: Begin the installation process
 app.get('/api/auth', async (req, res) => {
   try {
