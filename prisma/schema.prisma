@@ -1,0 +1,35 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Offer {
+  id                   String   @id @default(cuid())
+  shop                 String
+  title                String   // Merchant-facing name "Buy 2 Get 1"
+  type                 String   // "BOGO", "FREE_GIFT", "VOLUME", "COMBO"
+  configType           String   @default("BASIC")  // Sub-type: "BASIC", "CHEAPEST_FREE", "DIFFERENT_PRODUCT", "MULTI_TIER", etc.
+  status               String   @default("ACTIVE") // "ACTIVE", "DRAFT", "ARCHIVED"
+  shopifyDiscountId    String?  // The actual Shopify discount GID (gid://shopify/DiscountAutomaticNode/...)
+  
+  // JSON string storing the exact rules (e.g., minimum cart amount, specific variants involved, percentage vs fixed)
+  configurationJson    String   
+  
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  activities           OfferActivity[]
+}
+
+model OfferActivity {
+  id        String   @id @default(cuid())
+  offerId   String
+  offer     Offer    @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  action    String   // "CREATED", "UPDATED", "DELETED", "SYNCED", "STATUS_CHANGED", "ERROR"
+  details   String?  // JSON string with extra info
+  createdAt DateTime @default(now())
+}

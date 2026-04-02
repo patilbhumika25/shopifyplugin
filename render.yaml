@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: shopify-discount-app
+    env: node
+    buildCommand: npm install && npx prisma generate && npx prisma db push && cd frontend && npm run build
+    startCommand: npm start
+    disk:
+      name: data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        value: "file:/data/dev.db"
+      - key: SESSION_DB_PATH
+        value: "/data/session_db.sqlite"
+      - key: PORT
+        value: "10000"
+      - key: SCOPES
+        value: "read_products,write_products,read_discounts,write_discounts"
+      - key: SHOPIFY_API_KEY
+        sync: false
+      - key: SHOPIFY_API_SECRET
+        sync: false
+      - key: HOST
+        sync: false
