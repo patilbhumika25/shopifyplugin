@@ -1,0 +1,35 @@
+{
+  "name": "shopify-plugin",
+  "version": "1.0.0",
+  "description": "Shopify Custom Discount App",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "dev:backend": "node --watch index.js",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+
+    "build": "npm install && npx prisma generate && cd frontend && npm run build",
+
+    "postinstall": "npx prisma generate"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@prisma/client": "^5.22.0",
+    "@shopify/shopify-api": "^12.3.0",
+    "@shopify/shopify-app-session-storage-sqlite": "^5.0.5",
+    "dotenv": "^17.3.1",
+    "ejs": "^4.0.1",
+    "express": "^5.2.1",
+    "sqlite3": "^5.1.7"
+  },
+  "devDependencies": {
+    "@shopify/app": "^3.58.2",
+    "@shopify/cli": "^3.90.1",
+    "concurrently": "^9.2.1",
+    "prisma": "^5.22.0"
+  }
+}

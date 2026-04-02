@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+frontend/node_modules/
+custom-discounts/node_modules/
+
+# Environment
+.env
+
+# Database
+*.sqlite
+prisma/dev.db
+
+# Build output
+frontend/dist/
+custom-discounts/extensions/*/dist/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*

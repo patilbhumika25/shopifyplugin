@@ -1,0 +1,10 @@
+{
+  "offline_bogo-offers.myshopify.com": {
+    "id": "offline_bogo-offers.myshopify.com",
+    "shop": "bogo-offers.myshopify.com",
+    "state": "331480552812264",
+    "isOnline": false,
+    "scope": "write_discounts",
+    "accessToken": "shpua_0560c1b7cf0d8b8615c25555b22bcc24"
+  }
+}
