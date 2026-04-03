@@ -378,6 +378,7 @@ async function getGraphQLClient(req, res, shop) {
     if (sessionId) {
       const session = await shopify.config.sessionStorage.loadSession(sessionId);
       if (session?.accessToken) {
+        console.log(`[AUTH] GraphQL client from session token: ${sessionId}`);
         return new shopify.clients.Graphql({ session });
       }
     }
@@ -386,38 +387,26 @@ async function getGraphQLClient(req, res, shop) {
   }
 
   // Fallback: load the offline session directly by shop name
-  // The shop param can come from getShopFromSession or from stored sessions
   if (shop) {
+    console.log(`[AUTH] Trying offline session for shop: ${shop}`);
     const session = await loadOfflineSession(shop);
     if (session) {
+      console.log(`[AUTH] GraphQL client from offline session for ${shop}`);
       return new shopify.clients.Graphql({ session });
     }
-  }
+    console.log(`[AUTH] No offline session found for shop: ${shop}`);
 
-  // Last resort: scan sessions.json directly for any valid session
-  try {
-    const SESSION_FILE = path.join(__dirname, 'sessions.json');
-    console.log(`🔍 Scanning ${SESSION_FILE}...`);
-    if (fs.existsSync(SESSION_FILE)) {
-      const allSessions = JSON.parse(fs.readFileSync(SESSION_FILE, 'utf8'));
-      const keys = Object.keys(allSessions);
-      console.log(`🔍 Found ${keys.length} sessions: ${keys.join(', ')}`);
-      for (const [key, session] of Object.entries(allSessions)) {
-        // Shopify Session might serialize accessToken differently
-        const token = session.accessToken || session.access_token;
-        console.log(`🔍 Session ${key}: shop=${session.shop}, hasToken=${!!token}, keys=${Object.keys(session).join(',')}`);
-        if (token) {
-          // Ensure accessToken is set (normalize)
-          session.accessToken = token;
-          console.log(`📌 Found stored session for shop: ${session.shop}`);
+    // Try alternate session ID formats Shopify SDK might use
+    const altIds = [shop, `${shop}_offline`, `offline_${shop.replace('.myshopify.com', '')}`];
+    for (const altId of altIds) {
+      try {
+        const session = await shopify.config.sessionStorage.loadSession(altId);
+        if (session?.accessToken) {
+          console.log(`[AUTH] GraphQL client from alternate session ID: ${altId}`);
           return new shopify.clients.Graphql({ session });
         }
-      }
-    } else {
-      console.log('🔍 sessions.json does not exist');
+      } catch (e) { /* ignore */ }
     }
-  } catch (e) {
-    console.error('Error scanning sessions.json:', e.message);
   }
 
   console.log('ℹ️ No GraphQL session — offer saved locally only (Shopify discount not created)');
@@ -775,17 +764,7 @@ app.post('/api/offers', async (req, res) => {
       ? configurationJson
       : JSON.stringify(configurationJson);
 
-    // Save to local database first
-    const offer = await prisma.offer.create({
-      data: {
-        shop,
-        title,
-        type,
-        configType: configType || 'BASIC',
-        configurationJson: configStr,
-        status: 'ACTIVE'
-      }
-    });
+    let shopifyDiscountId = null;
 
     // Try to create the real Shopify discount via GraphQL
     const client = await getGraphQLClient(req, res, shop);
@@ -801,18 +780,15 @@ app.post('/api/offers', async (req, res) => {
             functionId,
           });
           if (result.discountId) {
-            // Store the Shopify discount ID in our database
-            await prisma.offer.update({
-              where: { id: offer.id },
-              data: { shopifyDiscountId: result.discountId },
-            });
-            offer.shopifyDiscountId = result.discountId;
+            shopifyDiscountId = result.discountId;
             console.log(`✅ Shopify discount created: ${result.discountId}`);
           } else {
             console.warn('⚠️ Shopify discount creation failed:', result.error);
+            return res.status(400).json({ error: `Shopify Error: ${result.error || 'Failed to create automatic discount'}` });
           }
         } else {
           console.warn(`⚠️ Function '${handle}' not found. Deploy functions first: npx shopify app dev`);
+          return res.status(400).json({ error: `Function '${handle}' not found on store. Please deploy extensions first.` });
         }
       }
 
@@ -822,11 +798,29 @@ app.post('/api/offers', async (req, res) => {
       }
     } else {
       console.log('ℹ️ No GraphQL session — offer saved locally only (Shopify discount not created)');
+      // Always enforce auth for actual stores
+      if (shop !== 'dev-store.myshopify.com') {
+         return res.status(401).json({ error: 'Shopify Session expired or missing. Please reload the app within Shopify Admin.' });
+      }
     }
+
+    // Save to local database
+    const offer = await prisma.offer.create({
+      data: {
+        shop,
+        title,
+        type,
+        configType: configType || 'BASIC',
+        configurationJson: configStr,
+        status: 'ACTIVE',
+        shopifyDiscountId: shopifyDiscountId
+      }
+    });
+
     // Log activity
     await logActivity(offer.id, 'CREATED', { title, type, configType: configType || 'BASIC' });
-    if (offer.shopifyDiscountId) {
-      await logActivity(offer.id, 'SYNCED', { discountId: offer.shopifyDiscountId });
+    if (shopifyDiscountId) {
+      await logActivity(offer.id, 'SYNCED', { discountId: shopifyDiscountId });
     }
 
     res.json(offer);
@@ -844,6 +838,34 @@ app.put('/api/offers/:id', async (req, res) => {
 
     const { title, type, configType, configurationJson, status } = req.body;
 
+    // Fetch existing offer first to get shopifyDiscountId
+    const existingOffer = await prisma.offer.findUnique({
+      where: { id: req.params.id, shop }
+    });
+    if (!existingOffer) return res.status(404).json({ error: 'Offer not found' });
+
+    // ── Sync changes to Shopify first ──────────────────────────────────────
+    if (existingOffer.shopifyDiscountId && (configurationJson || title)) {
+      try {
+        const client = await getGraphQLClient(req, res, shop);
+        if (client) {
+          const updateResult = await updateShopifyDiscount(client, {
+            discountId: existingOffer.shopifyDiscountId,
+            title: title || existingOffer.title,
+            type: type || existingOffer.type,
+            configurationJson: configurationJson || JSON.parse(existingOffer.configurationJson),
+          });
+          if (updateResult.error) {
+            return res.status(400).json({ error: `Shopify Sync Error: ${updateResult.error}` });
+          }
+        } else if (isProd) {
+          return res.status(401).json({ error: 'Shopify Session expired. Please reload the app.' });
+        }
+      } catch (syncErr) {
+        return res.status(500).json({ error: `Shopify sync error: ${syncErr.message}` });
+      }
+    }
+
     const offer = await prisma.offer.update({
       where: {
         id: req.params.id,
@@ -857,26 +879,6 @@ app.put('/api/offers/:id', async (req, res) => {
         ...(status !== undefined && { status }),
       }
     });
-
-    // ── Sync changes to Shopify ──────────────────────────────────────
-    if (offer.shopifyDiscountId && (configurationJson || title)) {
-      try {
-        const client = await getGraphQLClient(req, res, shop);
-        if (client) {
-          const updateResult = await updateShopifyDiscount(client, {
-            discountId: offer.shopifyDiscountId,
-            title: title || offer.title,
-            type: type || offer.type,
-            configurationJson: configurationJson || JSON.parse(offer.configurationJson),
-          });
-          if (updateResult.error) {
-            console.error('⚠️ Shopify sync failed (offer still saved locally):', updateResult.error);
-          }
-        }
-      } catch (syncErr) {
-        console.error('⚠️ Shopify sync error (offer still saved locally):', syncErr.message);
-      }
-    }
 
     // Sync Free Gift Metafields for App Embeds
     if (type === 'FREE_GIFT' && configurationJson) {
