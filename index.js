@@ -800,7 +800,7 @@ app.post('/api/offers', async (req, res) => {
       console.log('ℹ️ No GraphQL session — offer saved locally only (Shopify discount not created)');
       // Always enforce auth for actual stores
       if (shop !== 'dev-store.myshopify.com') {
-         return res.status(401).json({ error: 'Shopify Session expired or missing. Please reload the app within Shopify Admin.' });
+         return res.status(401).json({ error: 'Shopify Session expired or missing. Please reload the app within Shopify Admin.', shop });
       }
     }
 
@@ -859,7 +859,7 @@ app.put('/api/offers/:id', async (req, res) => {
             return res.status(400).json({ error: `Shopify Sync Error: ${updateResult.error}` });
           }
         } else if (isProd) {
-          return res.status(401).json({ error: 'Shopify Session expired. Please reload the app.' });
+          return res.status(401).json({ error: 'Shopify Session expired. Please reload the app.', shop });
         }
       } catch (syncErr) {
         return res.status(500).json({ error: `Shopify sync error: ${syncErr.message}` });

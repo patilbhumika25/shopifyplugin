@@ -108,12 +108,21 @@ export default function CreateOffer() {
                 }),
             });
             if (!resp.ok) {
+                const data = await resp.json().catch(() => ({}));
                 if (resp.status === 401) {
-                    const shop = new URLSearchParams(window.location.search).get('shop');
-                    window.open(`/api/auth?shop=${shop}`, '_top');
+                    let authShop = new URLSearchParams(window.location.search).get('shop');
+                    if (!authShop && (window as any).shopify?.config) {
+                        authShop = (window as any).shopify.config.shop;
+                    }
+                    if (!authShop) authShop = data.shop;
+                    
+                    if (authShop) {
+                        window.open(`/api/auth?shop=${authShop}`, '_top');
+                    } else {
+                        throw new Error('Authentication expired. Please reload the app from your Shopify dashbaord.');
+                    }
                     return;
                 }
-                const data = await resp.json().catch(() => ({}));
                 throw new Error(data.error || `Failed to ${isEditMode ? 'update' : 'create'} offer`);
             }
             if (isEditMode) {
