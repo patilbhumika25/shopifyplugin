@@ -14,11 +14,13 @@ const VOLUME_SUB_TYPES = [
 interface VolumeTier {
     minQty: string;
     discountPercentage: string;
+    eligibleVariantIds: string[];
 }
 
 interface FixedTier {
     bundleQuantity: string;
     fixedPrice: string;
+    eligibleVariantIds: string[];
 }
 
 export interface VolumeFormHandle {
@@ -38,9 +40,9 @@ const VolumeForm = forwardRef<VolumeFormHandle, { initialConfig?: any }>(({ init
 
     // MultiTier
     const [tiers, setTiers] = useState<VolumeTier[]>([
-        { minQty: '3', discountPercentage: '10' },
-        { minQty: '5', discountPercentage: '20' },
-        { minQty: '10', discountPercentage: '30' },
+        { minQty: '3', discountPercentage: '10', eligibleVariantIds: [] },
+        { minQty: '5', discountPercentage: '20', eligibleVariantIds: [] },
+        { minQty: '10', discountPercentage: '30', eligibleVariantIds: [] },
     ]);
 
     // MixMatch
@@ -48,8 +50,8 @@ const VolumeForm = forwardRef<VolumeFormHandle, { initialConfig?: any }>(({ init
 
     // MultiTierFixed
     const [fixedTiers, setFixedTiers] = useState<FixedTier[]>([
-        { bundleQuantity: '2', fixedPrice: '999' },
-        { bundleQuantity: '4', fixedPrice: '1899' },
+        { bundleQuantity: '2', fixedPrice: '999', eligibleVariantIds: [] },
+        { bundleQuantity: '4', fixedPrice: '1899', eligibleVariantIds: [] },
     ]);
 
     // Pre-fill from initialConfig
@@ -67,37 +69,39 @@ const VolumeForm = forwardRef<VolumeFormHandle, { initialConfig?: any }>(({ init
                 setFixedTiers(initialConfig.tiers.map((t: any) => ({
                     bundleQuantity: String(t.bundleQuantity),
                     fixedPrice: String(t.fixedPrice),
+                    eligibleVariantIds: t.eligibleVariantIds || [],
                 })));
             } else {
                 setTiers(initialConfig.tiers.map((t: any) => ({
                     minQty: String(t.minQty),
                     discountPercentage: String(t.discountPercentage),
+                    eligibleVariantIds: t.eligibleVariantIds || [],
                 })));
             }
         }
     }, [initialConfig]);
 
     const addTier = useCallback(() => {
-        setTiers(prev => [...prev, { minQty: '', discountPercentage: '' }]);
+        setTiers(prev => [...prev, { minQty: '', discountPercentage: '', eligibleVariantIds: [] }]);
     }, []);
 
     const removeTier = useCallback((index: number) => {
         setTiers(prev => prev.filter((_, i) => i !== index));
     }, []);
 
-    const updateTier = useCallback((index: number, field: keyof VolumeTier, value: string) => {
+    const updateTier = useCallback((index: number, field: keyof VolumeTier, value: any) => {
         setTiers(prev => prev.map((t, i) => i === index ? { ...t, [field]: value } : t));
     }, []);
 
     const addFixedTier = useCallback(() => {
-        setFixedTiers(prev => [...prev, { bundleQuantity: '', fixedPrice: '' }]);
+        setFixedTiers(prev => [...prev, { bundleQuantity: '', fixedPrice: '', eligibleVariantIds: [] }]);
     }, []);
 
     const removeFixedTier = useCallback((index: number) => {
         setFixedTiers(prev => prev.filter((_, i) => i !== index));
     }, []);
 
-    const updateFixedTier = useCallback((index: number, field: keyof FixedTier, value: string) => {
+    const updateFixedTier = useCallback((index: number, field: keyof FixedTier, value: any) => {
         setFixedTiers(prev => prev.map((t, i) => i === index ? { ...t, [field]: value } : t));
     }, []);
 
@@ -118,6 +122,7 @@ const VolumeForm = forwardRef<VolumeFormHandle, { initialConfig?: any }>(({ init
                     tiers: tiers.map(t => ({
                         minQty: parseInt(t.minQty, 10),
                         discountPercentage: parseInt(t.discountPercentage, 10),
+                        eligibleVariantIds: t.eligibleVariantIds,
                     })),
                 };
             case 'FIXED_BUNDLE':
@@ -132,6 +137,7 @@ const VolumeForm = forwardRef<VolumeFormHandle, { initialConfig?: any }>(({ init
                     tiers: fixedTiers.map(t => ({
                         bundleQuantity: parseInt(t.bundleQuantity, 10),
                         fixedPrice: parseFloat(t.fixedPrice),
+                        eligibleVariantIds: t.eligibleVariantIds,
                     })),
                 };
             case 'MIX_MATCH':
@@ -186,6 +192,14 @@ const VolumeForm = forwardRef<VolumeFormHandle, { initialConfig?: any }>(({ init
                                         <TextField type="number" label="Min Qty" value={tier.minQty} onChange={(v) => updateTier(index, 'minQty', v)} autoComplete="off" />
                                         <TextField type="number" label="Discount %" value={tier.discountPercentage} onChange={(v) => updateTier(index, 'discountPercentage', v)} autoComplete="off" />
                                     </FormLayout.Group>
+                                    <ProductPicker 
+                                        label="Eligible Variants (Optional)" 
+                                        selectedIds={tier.eligibleVariantIds} 
+                                        onChange={(ids) => updateTier(index, 'eligibleVariantIds', ids)}
+                                        resourceType="variant"
+                                        helpText="If left empty, tier applies to all variants."
+                                        multiple={true}
+                                    />
                                 </FormLayout>
                             </BlockStack>
                         </Card>
@@ -221,6 +235,14 @@ const VolumeForm = forwardRef<VolumeFormHandle, { initialConfig?: any }>(({ init
                                         <TextField type="number" label="Bundle Quantity" value={tier.bundleQuantity} onChange={(v) => updateFixedTier(index, 'bundleQuantity', v)} autoComplete="off" helpText="e.g. 2" />
                                         <TextField type="number" label="Fixed Price (₹)" value={tier.fixedPrice} onChange={(v) => updateFixedTier(index, 'fixedPrice', v)} autoComplete="off" helpText="e.g. 999" />
                                     </FormLayout.Group>
+                                    <ProductPicker 
+                                        label="Eligible Variants (Optional)" 
+                                        selectedIds={tier.eligibleVariantIds} 
+                                        onChange={(ids) => updateFixedTier(index, 'eligibleVariantIds', ids)}
+                                        resourceType="variant"
+                                        helpText="If left empty, tier applies to all variants."
+                                        multiple={true}
+                                    />
                                 </FormLayout>
                             </BlockStack>
                         </Card>
