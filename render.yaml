@@ -3,7 +3,7 @@ services:
     name: shopify-discount-app
     env: node
     buildCommand: npm install && npx prisma generate && cd frontend && npm run build
-    startCommand: npx prisma db push && npm start
+    startCommand: npx prisma db push --accept-data-loss && npm start
     disk:
       name: data
       mountPath: /data
