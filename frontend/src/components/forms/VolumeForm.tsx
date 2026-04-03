@@ -5,7 +5,8 @@ import ProductPicker from '../ProductPicker';
 const VOLUME_SUB_TYPES = [
     { label: 'Basic (Min Qty → % Off)', value: 'BASIC' },
     { label: 'Multi-Tier Percentage Discounts', value: 'MULTI_TIER' },
-    { label: 'Fixed Price Bundle', value: 'FIXED_BUNDLE' },
+    { label: 'Fixed Price Bundle (Single Tier)', value: 'FIXED_BUNDLE' },
+    { label: 'Multi-Tier Fixed Price (e.g. Buy 2 for ₹999, Buy 4 for ₹1,899)', value: 'MULTI_TIER_FIXED' },
     { label: 'Mix & Match Volume Pricing', value: 'MIX_MATCH' },
     { label: 'Cart-Wide Volume Pricing', value: 'CART_WIDE' },
 ];
@@ -13,6 +14,11 @@ const VOLUME_SUB_TYPES = [
 interface VolumeTier {
     minQty: string;
     discountPercentage: string;
+}
+
+interface FixedTier {
+    bundleQuantity: string;
+    fixedPrice: string;
 }
 
 export interface VolumeFormHandle {
@@ -40,6 +46,12 @@ const VolumeForm = forwardRef<VolumeFormHandle, { initialConfig?: any }>(({ init
     // MixMatch
     const [eligibleIdsList, setEligibleIdsList] = useState<string[]>([]);
 
+    // MultiTierFixed
+    const [fixedTiers, setFixedTiers] = useState<FixedTier[]>([
+        { bundleQuantity: '2', fixedPrice: '999' },
+        { bundleQuantity: '4', fixedPrice: '1899' },
+    ]);
+
     // Pre-fill from initialConfig
     useEffect(() => {
         if (!initialConfig) return;
@@ -49,10 +61,20 @@ const VolumeForm = forwardRef<VolumeFormHandle, { initialConfig?: any }>(({ init
         if (initialConfig.bundleQuantity) setBundleQty(String(initialConfig.bundleQuantity));
         if (initialConfig.fixedPrice) setFixedPrice(String(initialConfig.fixedPrice));
         if (initialConfig.eligibleProductIds) setEligibleIdsList(initialConfig.eligibleProductIds);
-        if (initialConfig.tiers) setTiers(initialConfig.tiers.map((t: any) => ({
-            minQty: String(t.minQty),
-            discountPercentage: String(t.discountPercentage),
-        })));
+        if (initialConfig.tiers) {
+            // Detect which tier format: percentage tiers vs fixed price tiers
+            if (initialConfig.tiers[0]?.fixedPrice !== undefined) {
+                setFixedTiers(initialConfig.tiers.map((t: any) => ({
+                    bundleQuantity: String(t.bundleQuantity),
+                    fixedPrice: String(t.fixedPrice),
+                })));
+            } else {
+                setTiers(initialConfig.tiers.map((t: any) => ({
+                    minQty: String(t.minQty),
+                    discountPercentage: String(t.discountPercentage),
+                })));
+            }
+        }
     }, [initialConfig]);
 
     const addTier = useCallback(() => {
@@ -65,6 +87,18 @@ const VolumeForm = forwardRef<VolumeFormHandle, { initialConfig?: any }>(({ init
 
     const updateTier = useCallback((index: number, field: keyof VolumeTier, value: string) => {
         setTiers(prev => prev.map((t, i) => i === index ? { ...t, [field]: value } : t));
+    }, []);
+
+    const addFixedTier = useCallback(() => {
+        setFixedTiers(prev => [...prev, { bundleQuantity: '', fixedPrice: '' }]);
+    }, []);
+
+    const removeFixedTier = useCallback((index: number) => {
+        setFixedTiers(prev => prev.filter((_, i) => i !== index));
+    }, []);
+
+    const updateFixedTier = useCallback((index: number, field: keyof FixedTier, value: string) => {
+        setFixedTiers(prev => prev.map((t, i) => i === index ? { ...t, [field]: value } : t));
     }, []);
 
     const buildConfig = useCallback(() => {
@@ -92,6 +126,14 @@ const VolumeForm = forwardRef<VolumeFormHandle, { initialConfig?: any }>(({ init
                     bundleQuantity: parseInt(bundleQty, 10),
                     fixedPrice: parseFloat(fixedPrice),
                 };
+            case 'MULTI_TIER_FIXED':
+                return {
+                    ...base,
+                    tiers: fixedTiers.map(t => ({
+                        bundleQuantity: parseInt(t.bundleQuantity, 10),
+                        fixedPrice: parseFloat(t.fixedPrice),
+                    })),
+                };
             case 'MIX_MATCH':
                 return {
                     ...base,
@@ -102,7 +144,7 @@ const VolumeForm = forwardRef<VolumeFormHandle, { initialConfig?: any }>(({ init
             default:
                 return base;
         }
-    }, [subType, minQty, discountPct, bundleQty, fixedPrice, tiers, eligibleIdsList]);
+    }, [subType, minQty, discountPct, bundleQty, fixedPrice, tiers, fixedTiers, eligibleIdsList]);
 
     useImperativeHandle(ref, () => ({ getConfig: buildConfig }), [buildConfig]);
 
@@ -158,6 +200,33 @@ const VolumeForm = forwardRef<VolumeFormHandle, { initialConfig?: any }>(({ init
                     <TextField type="number" label="Bundle Quantity" value={bundleQty} onChange={setBundleQty} autoComplete="off" helpText="Number of items in the bundle" />
                     <TextField type="number" label="Fixed Bundle Price ($)" value={fixedPrice} onChange={setFixedPrice} autoComplete="off" helpText="Total price for the bundle (e.g. 3 for $99)" />
                 </FormLayout>
+            )}
+
+            {/* ── MULTI-TIER FIXED ──────────────────────── */}
+            {subType === 'MULTI_TIER_FIXED' && (
+                <BlockStack gap="300">
+                    <Text variant="headingSm" as="h3">Fixed Price Tiers</Text>
+                    <Text variant="bodySm" as="p" tone="subdued">Define multiple bundle tiers — the best matching quantity applies at checkout (e.g. Buy 2 for ₹999, Buy 4 for ₹1,899).</Text>
+                    {fixedTiers.map((tier, index) => (
+                        <Card key={index}>
+                            <BlockStack gap="200">
+                                <InlineStack align="space-between">
+                                    <Text variant="bodySm" fontWeight="semibold" as="span">Tier {index + 1}</Text>
+                                    {fixedTiers.length > 1 && (
+                                        <Button variant="plain" tone="critical" onClick={() => removeFixedTier(index)}>Remove</Button>
+                                    )}
+                                </InlineStack>
+                                <FormLayout>
+                                    <FormLayout.Group>
+                                        <TextField type="number" label="Bundle Quantity" value={tier.bundleQuantity} onChange={(v) => updateFixedTier(index, 'bundleQuantity', v)} autoComplete="off" helpText="e.g. 2" />
+                                        <TextField type="number" label="Fixed Price (₹)" value={tier.fixedPrice} onChange={(v) => updateFixedTier(index, 'fixedPrice', v)} autoComplete="off" helpText="e.g. 999" />
+                                    </FormLayout.Group>
+                                </FormLayout>
+                            </BlockStack>
+                        </Card>
+                    ))}
+                    <Button onClick={addFixedTier}>+ Add Tier</Button>
+                </BlockStack>
             )}
 
             {/* ── MIX & MATCH ──────────────────────────── */}
