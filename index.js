@@ -229,7 +229,7 @@ setInterval(() => {
 
 // Frontend app routing in production (catch-all)
 if (isProd) {
-  app.get('/*', (req, res, next) => {
+  app.get('*', (req, res, next) => {
     // Only serve index.html for non-API routes
     if (req.path.startsWith('/api')) return next();
 
