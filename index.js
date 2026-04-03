@@ -317,7 +317,7 @@ app.get('/api/auth/callback', async (req, res) => {
 
 // Get the shop name from the session
 async function getShopFromSession(req, res) {
-  // Try to get the real session first (works after OAuth install)
+  // 1. Try to get the real session first (works after OAuth install with App Bridge token)
   try {
     const sessionId = await shopify.session.getCurrentId({ isOnline: false, rawRequest: req, rawResponse: res });
     if (sessionId) {
@@ -325,13 +325,35 @@ async function getShopFromSession(req, res) {
       if (session?.shop) return session.shop;
     }
   } catch (e) {
-    // No session token in request
+    // No session token in request header
   }
 
-  // In dev mode, return a default shop so basic CRUD still works
+  // 2. Try shop from query parameter (Shopify always passes ?shop= in embedded app URLs)
+  const shopFromQuery = req.query.shop || req.headers['x-shopify-shop-domain'];
+  if (shopFromQuery) {
+    const offlineSession = await loadOfflineSession(shopFromQuery);
+    if (offlineSession?.shop) {
+      console.log(`[AUTH] Resolved shop from query param: ${offlineSession.shop}`);
+      return offlineSession.shop;
+    }
+  }
+
+  // 3. In dev mode, return a default shop so basic CRUD still works
   if (!isProd) {
     return process.env.SHOP || 'dev-store.myshopify.com';
   }
+
+  // 4. Last resort: load the most recently stored offline session
+  try {
+    const SESSION_FILE = path.join(__dirnameRoot, 'sessions.json');
+    if (fs.existsSync(SESSION_FILE)) {
+      const allSessions = JSON.parse(fs.readFileSync(SESSION_FILE, 'utf8'));
+      for (const [, session] of Object.entries(allSessions)) {
+        if (session.shop) return session.shop;
+      }
+    }
+  } catch (e) { /* ignore */ }
+
   return null;
 }
 

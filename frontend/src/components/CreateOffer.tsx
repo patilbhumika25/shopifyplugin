@@ -92,10 +92,11 @@ export default function CreateOffer() {
         }
 
         try {
+            const shop = new URLSearchParams(window.location.search).get('shop') || '';
             const url = isEditMode ? `/api/offers/${id}` : '/api/offers';
             const method = isEditMode ? 'PUT' : 'POST';
 
-            const resp = await fetch(url, {
+            const resp = await fetch(`${url}?shop=${shop}`, {
                 method,
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
