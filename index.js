@@ -7,9 +7,24 @@ import { shopifyApi, ApiVersion } from '@shopify/shopify-api';
 import '@shopify/shopify-api/adapters/node';
 import { PrismaClient } from '@prisma/client';
 
-const prisma = new PrismaClient();
-
 dotenv.config();
+
+const isProd = process.env.NODE_ENV === 'production';
+
+let dbUrl = process.env.DATABASE_URL;
+if (!isProd) {
+  const __filenameRoot = fileURLToPath(import.meta.url);
+  const __dirnameRoot = path.dirname(__filenameRoot);
+  dbUrl = `file:${path.resolve(__dirnameRoot, 'prisma/dev.db')}`;
+}
+
+const prisma = new PrismaClient({
+  datasources: {
+    db: {
+      url: dbUrl,
+    },
+  },
+});
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
 const HOST = process.env.HOST;
@@ -21,8 +36,6 @@ if (!process.env.SHOPIFY_API_KEY || !process.env.SHOPIFY_API_SECRET || !HOST) {
 
 // Ensure HOST does not have a trailing slash, and extract hostname
 const hostName = new URL(HOST).hostname;
-
-const isProd = process.env.NODE_ENV === 'production';
 
 // Session storage: use file-based storage for dev (persists across restarts)
 // Production should use SQLiteSessionStorage
