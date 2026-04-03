@@ -113,9 +113,8 @@ const app = express();
 console.log('[DEBUG] Express app created');
 
 // Serve built frontend assets (run `cd frontend && npm run build`)
-app.use(express.static(path.join(__dirname, 'frontend/dist')));
+app.use(express.static(path.join(__dirnameRoot, 'frontend/dist'), { index: false }));
 
-console.log('[DEBUG] About to register webhook route');
 // Webhook handling must be parsed raw, before any other body parsers
 app.post(
   '/api/webhooks',
@@ -229,8 +228,17 @@ setInterval(() => {
 
 // Frontend app routing in production (catch-all)
 if (isProd) {
-  app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'frontend/dist/index.html'));
+  app.get('/*', (req, res, next) => {
+    // Only serve index.html for non-API routes
+    if (req.path.startsWith('/api')) return next();
+
+    const indexPath = path.join(__dirnameRoot, 'frontend/dist/index.html');
+    fs.readFile(indexPath, 'utf8', (err, data) => {
+      if (err) return next(err);
+      // Inject API key dynamically into the HTML for App Bridge
+      const html = data.replace(/%VITE_SHOPIFY_API_KEY%/g, process.env.SHOPIFY_API_KEY || '');
+      res.send(html);
+    });
   });
 }
 
