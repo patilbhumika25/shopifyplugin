@@ -32,6 +32,7 @@ const ComboForm = forwardRef<ComboFormHandle, { initialConfig?: any }>(({ initia
 
     // BogoGift / BundleGift
     const [giftVariantIdList, setGiftVariantIdList] = useState<string[]>([]);
+    const [giftVariantIdsList, setGiftVariantIdsList] = useState<string[]>([]); // mystery pool
     const [bundleQty, setBundleQty] = useState('3');
 
     // Pre-fill from initialConfig
@@ -52,6 +53,7 @@ const ComboForm = forwardRef<ComboFormHandle, { initialConfig?: any }>(({ initia
         if (initialConfig.bogoDiscountPercentage) setBogoDiscountPct(String(initialConfig.bogoDiscountPercentage));
         if (initialConfig.additionalDiscountPercentage) setAdditionalDiscountPct(String(initialConfig.additionalDiscountPercentage));
         if (initialConfig.giftVariantId) setGiftVariantIdList([initialConfig.giftVariantId]);
+        if (initialConfig.giftVariantIds) setGiftVariantIdsList(initialConfig.giftVariantIds);
         if (initialConfig.bundleQuantity) setBundleQty(String(initialConfig.bundleQuantity));
     }, [initialConfig]);
 
@@ -82,7 +84,11 @@ const ComboForm = forwardRef<ComboFormHandle, { initialConfig?: any }>(({ initia
                     ...base,
                     buyQuantity: parseInt(buyQty, 10),
                     getQuantity: parseInt(getQty, 10),
-                    giftVariantId: giftVariantIdList[0] || '',
+                    // Use pool if merchant added multiple, else single gift
+                    ...(giftVariantIdsList.length > 0
+                        ? { giftVariantIds: giftVariantIdsList }
+                        : { giftVariantId: giftVariantIdList[0] || '' }
+                    ),
                 };
             case 'BUNDLE_GIFT':
                 return {
@@ -93,7 +99,7 @@ const ComboForm = forwardRef<ComboFormHandle, { initialConfig?: any }>(({ initia
             default:
                 return base;
         }
-    }, [subType, minQty, targetVariantList, discountType, discountValue, buyQty, getQty, bogoDiscountPct, additionalDiscountPct, giftVariantIdList, bundleQty]);
+    }, [subType, minQty, targetVariantList, discountType, discountValue, buyQty, getQty, bogoDiscountPct, additionalDiscountPct, giftVariantIdList, giftVariantIdsList, bundleQty]);
 
     useImperativeHandle(ref, () => ({ getConfig: buildConfig }), [buildConfig]);
 
@@ -155,9 +161,24 @@ const ComboForm = forwardRef<ComboFormHandle, { initialConfig?: any }>(({ initia
                         <TextField type="number" label="Buy Quantity" value={buyQty} onChange={setBuyQty} autoComplete="off" />
                         <TextField type="number" label="Get Quantity (Free)" value={getQty} onChange={setGetQty} autoComplete="off" />
                     </FormLayout.Group>
-                    <ProductPicker label="Gift Product (also becomes free)" selectedIds={giftVariantIdList} onChange={setGiftVariantIdList} multiple={false} resourceType="variant" helpText="This gift item also becomes free when the BOGO triggers" />
+                    <ProductPicker
+                        label="Specific Gift Product"
+                        selectedIds={giftVariantIdList}
+                        onChange={setGiftVariantIdList}
+                        multiple={false}
+                        resourceType="variant"
+                        helpText="For a single specific gift. Leave empty if using Mystery Pool below."
+                    />
+                    <ProductPicker
+                        label="Mystery Gift Pool (optional)"
+                        selectedIds={giftVariantIdsList}
+                        onChange={setGiftVariantIdsList}
+                        resourceType="variant"
+                        helpText="Add multiple products here for a mystery gift — whichever one is in the customer's cart gets 100% off. This overrides the Specific Gift above."
+                    />
                 </FormLayout>
             )}
+
 
             {/* ── BUNDLE + GIFT ─────────────────────────── */}
             {subType === 'BUNDLE_GIFT' && (

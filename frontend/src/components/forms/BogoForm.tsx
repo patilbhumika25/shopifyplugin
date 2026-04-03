@@ -48,6 +48,9 @@ const BogoForm = forwardRef<BogoFormHandle, { initialConfig?: any }>(({ initialC
     // MixMatch / VariantScoped (now using arrays)
     const [eligibleIdsList, setEligibleIdsList] = useState<string[]>([]);
 
+    // Basic product scope (optional — for "Same Product" BOGO)
+    const [basicProductIds, setBasicProductIds] = useState<string[]>([]);
+
     // Pre-fill from initialConfig when editing
     useEffect(() => {
         if (!initialConfig) return;
@@ -66,6 +69,10 @@ const BogoForm = forwardRef<BogoFormHandle, { initialConfig?: any }>(({ initialC
         if (initialConfig.getVariantId) setGetVariantIdList([initialConfig.getVariantId]);
         if (initialConfig.eligibleProductIds) setEligibleIdsList(initialConfig.eligibleProductIds);
         if (initialConfig.eligibleVariantIds) setEligibleIdsList(initialConfig.eligibleVariantIds);
+        // Restore basic product scope
+        if (initialConfig.configType === 'BASIC' && initialConfig.eligibleProductIds) {
+            setBasicProductIds(initialConfig.eligibleProductIds);
+        }
         if (initialConfig.tiers) setTiers(initialConfig.tiers.map((t: any) => ({
             buyQuantity: String(t.buyQuantity),
             getQuantity: String(t.getQuantity),
@@ -98,6 +105,8 @@ const BogoForm = forwardRef<BogoFormHandle, { initialConfig?: any }>(({ initialC
                     discountType: discountType,
                     discountValue: parseInt(discountValue, 10),
                     discountPercentage: discountType === 'PERCENTAGE' ? parseInt(discountValue, 10) : 0,
+                    // Only include when merchant selected specific products
+                    ...(basicProductIds.length > 0 ? { eligibleProductIds: basicProductIds } : {}),
                 };
             case 'CHEAPEST_FREE':
                 return {
@@ -156,7 +165,7 @@ const BogoForm = forwardRef<BogoFormHandle, { initialConfig?: any }>(({ initialC
             default:
                 return base;
         }
-    }, [subType, buyQty, getQty, discountType, discountValue, maxApplications, minQty, buyVariantIdsList, getVariantIdList, tiers, eligibleIdsList]);
+    }, [subType, buyQty, getQty, discountType, discountValue, maxApplications, minQty, buyVariantIdsList, getVariantIdList, tiers, eligibleIdsList, basicProductIds]);
 
     useImperativeHandle(ref, () => ({
         getConfig: buildConfig,
@@ -181,6 +190,12 @@ const BogoForm = forwardRef<BogoFormHandle, { initialConfig?: any }>(({ initialC
             {/* ── BASIC ─────────────────────────────────────── */}
             {subType === 'BASIC' && (
                 <FormLayout>
+                    <ProductPicker
+                        label="Restrict to Specific Products (optional)"
+                        selectedIds={basicProductIds}
+                        onChange={setBasicProductIds}
+                        helpText="Leave empty to apply to all products in the cart. Select specific products to enable 'Same Product' BOGO — the deal will trigger independently per product."
+                    />
                     <FormLayout.Group>
                         <TextField type="number" label="Buy Quantity" value={buyQty} onChange={setBuyQty} autoComplete="off" />
                         <TextField type="number" label="Get Quantity (Free)" value={getQty} onChange={setGetQty} autoComplete="off" />
