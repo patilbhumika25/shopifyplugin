@@ -37,7 +37,8 @@ export default function Dashboard() {
     const fetchOffers = useCallback(async () => {
         try {
             setLoading(true);
-            const response = await fetch('/api/offers');
+            const shop = new URLSearchParams(window.location.search).get('shop') || '';
+            const response = await fetch(`/api/offers?shop=${shop}`);
             if (response.ok) {
                 const data = await response.json();
                 setOffers(data);
