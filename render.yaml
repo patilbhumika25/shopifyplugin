@@ -2,7 +2,7 @@ services:
   - type: web
     name: shopify-discount-app
     env: node
-    buildCommand: npm install && npx prisma generate && cd frontend && npm run build
+    buildCommand: npm install --include=dev && npx prisma generate && cd frontend && npm install --include=dev && npm run build
     startCommand: npx prisma db push --accept-data-loss && npm start
     disk:
       name: data
