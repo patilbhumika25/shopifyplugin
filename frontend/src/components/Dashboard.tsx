@@ -43,8 +43,16 @@ export default function Dashboard() {
                 const data = await response.json();
                 setOffers(data);
             } else if (response.status === 401) {
-                const shop = new URLSearchParams(window.location.search).get('shop');
-                window.open(`/api/auth?shop=${shop}`, '_top');
+                const data = await response.json().catch(() => ({}));
+                let authShop = new URLSearchParams(window.location.search).get('shop');
+                if (!authShop && (window as any).shopify?.config) {
+                    authShop = (window as any).shopify.config.shop;
+                }
+                if (!authShop) authShop = data.shop;
+
+                if (authShop) {
+                    window.open(`/api/auth?shop=${authShop}`, '_top');
+                }
             }
         } catch (err) {
             console.error(err);
