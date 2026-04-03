@@ -227,21 +227,6 @@ setInterval(() => {
   }
 }, 30 * 60 * 1000);
 
-// Frontend app routing in production (catch-all)
-if (isProd) {
-  app.get('*', (req, res, next) => {
-    // Only serve index.html for non-API routes
-    if (req.path.startsWith('/api')) return next();
-
-    const indexPath = path.join(__dirnameRoot, 'frontend/dist/index.html');
-    fs.readFile(indexPath, 'utf8', (err, data) => {
-      if (err) return next(err);
-      // Inject API key dynamically into the HTML for App Bridge
-      const html = data.replace(/%VITE_SHOPIFY_API_KEY%/g, process.env.SHOPIFY_API_KEY || '');
-      res.send(html);
-    });
-  });
-}
 
 // Universal Install Page for Merchants
 app.get('/install', (req, res) => {
@@ -1129,13 +1114,22 @@ app.delete('/api/offers/:id', async (req, res) => {
 });
 
 // Catch-all: serve the built frontend (run `cd frontend && npm run build` first)
-const frontendPath = path.join(__dirname, 'frontend/dist/index.html');
+const frontendPath = path.join(__dirnameRoot, 'frontend/dist/index.html');
 app.use((req, res, next) => {
   if (req.path.startsWith('/api')) {
     return next();
   }
   if (fs.existsSync(frontendPath)) {
-    res.sendFile(frontendPath);
+    if (isProd) {
+      // Inject SHOPIFY_API_KEY dynamically for App Bridge to work
+      fs.readFile(frontendPath, 'utf8', (err, data) => {
+        if (err) return next(err);
+        const html = data.replace(/%VITE_SHOPIFY_API_KEY%/g, process.env.SHOPIFY_API_KEY || '');
+        res.send(html);
+      });
+    } else {
+      res.sendFile(frontendPath);
+    }
   } else {
     res.send('Frontend not built yet. Run: cd frontend && npm run build');
   }
