@@ -11,10 +11,11 @@ dotenv.config();
 
 const isProd = process.env.NODE_ENV === 'production';
 
+const __filenameRoot = fileURLToPath(import.meta.url);
+const __dirnameRoot = path.dirname(__filenameRoot);
+
 let dbUrl = process.env.DATABASE_URL;
 if (!isProd) {
-  const __filenameRoot = fileURLToPath(import.meta.url);
-  const __dirnameRoot = path.dirname(__filenameRoot);
   dbUrl = `file:${path.resolve(__dirnameRoot, 'prisma/dev.db')}`;
 }
 
