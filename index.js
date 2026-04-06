@@ -800,7 +800,7 @@ app.post('/api/offers', async (req, res) => {
       console.log('ℹ️ No GraphQL session — offer saved locally only (Shopify discount not created)');
       // Always enforce auth for actual stores
       if (shop !== 'dev-store.myshopify.com') {
-         return res.status(401).json({ error: 'Shopify Session expired or missing. Please reload the app within Shopify Admin.', shop });
+        return res.status(401).json({ error: 'Shopify Session expired or missing. Please reload the app within Shopify Admin.', shop });
       }
     }
 

@@ -33,6 +33,7 @@ const VolumeForm = forwardRef<VolumeFormHandle, { initialConfig?: any }>(({ init
     // Basic / CartWide
     const [minQty, setMinQty] = useState('3');
     const [discountPct, setDiscountPct] = useState('15');
+    const [applyInMultiples, setApplyInMultiples] = useState(false);
 
     // FixedBundle
     const [bundleQty, setBundleQty] = useState('3');
@@ -60,6 +61,7 @@ const VolumeForm = forwardRef<VolumeFormHandle, { initialConfig?: any }>(({ init
         setSubType(initialConfig.configType || 'BASIC');
         if (initialConfig.minimumQuantity) setMinQty(String(initialConfig.minimumQuantity));
         if (initialConfig.discountPercentage) setDiscountPct(String(initialConfig.discountPercentage));
+        if (initialConfig.applyInMultiples !== undefined) setApplyInMultiples(initialConfig.applyInMultiples);
         if (initialConfig.bundleQuantity) setBundleQty(String(initialConfig.bundleQuantity));
         if (initialConfig.fixedPrice) setFixedPrice(String(initialConfig.fixedPrice));
         if (initialConfig.eligibleProductIds) setEligibleIdsList(initialConfig.eligibleProductIds);
@@ -115,6 +117,7 @@ const VolumeForm = forwardRef<VolumeFormHandle, { initialConfig?: any }>(({ init
                     ...base,
                     minimumQuantity: parseInt(minQty, 10),
                     discountPercentage: parseInt(discountPct, 10),
+                    applyInMultiples,
                 };
             case 'MULTI_TIER':
                 return {
@@ -146,11 +149,12 @@ const VolumeForm = forwardRef<VolumeFormHandle, { initialConfig?: any }>(({ init
                     eligibleProductIds: eligibleIdsList,
                     minimumQuantity: parseInt(minQty, 10),
                     discountPercentage: parseInt(discountPct, 10),
+                    applyInMultiples,
                 };
             default:
                 return base;
         }
-    }, [subType, minQty, discountPct, bundleQty, fixedPrice, tiers, fixedTiers, eligibleIdsList]);
+    }, [subType, minQty, discountPct, bundleQty, fixedPrice, tiers, fixedTiers, eligibleIdsList, applyInMultiples]);
 
     useImperativeHandle(ref, () => ({ getConfig: buildConfig }), [buildConfig]);
 
@@ -170,6 +174,15 @@ const VolumeForm = forwardRef<VolumeFormHandle, { initialConfig?: any }>(({ init
                 <FormLayout>
                     <TextField type="number" label="Minimum Quantity" value={minQty} onChange={setMinQty} autoComplete="off" />
                     <TextField type="number" label="Discount %" value={discountPct} onChange={setDiscountPct} autoComplete="off" />
+                    <Select
+                        label="Apply Discount To"
+                        options={[
+                            { label: 'All eligible items (e.g. buy 4, all 4 get discount)', value: 'false' },
+                            { label: 'Strict multiples of minimum quantity (e.g. buy 4, only 3 get discount)', value: 'true' }
+                        ]}
+                        value={String(applyInMultiples)}
+                        onChange={(v) => setApplyInMultiples(v === 'true')}
+                    />
                 </FormLayout>
             )}
 
@@ -262,6 +275,15 @@ const VolumeForm = forwardRef<VolumeFormHandle, { initialConfig?: any }>(({ init
                     />
                     <TextField type="number" label="Minimum Quantity" value={minQty} onChange={setMinQty} autoComplete="off" />
                     <TextField type="number" label="Discount %" value={discountPct} onChange={setDiscountPct} autoComplete="off" />
+                    <Select
+                        label="Apply Discount To"
+                        options={[
+                            { label: 'All eligible items (e.g. buy 4, all 4 get discount)', value: 'false' },
+                            { label: 'Strict multiples of minimum quantity (e.g. buy 4, only 3 get discount)', value: 'true' }
+                        ]}
+                        value={String(applyInMultiples)}
+                        onChange={(v) => setApplyInMultiples(v === 'true')}
+                    />
                 </FormLayout>
             )}
         </BlockStack>
