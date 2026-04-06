@@ -13,6 +13,7 @@ const VOLUME_SUB_TYPES = [
 
 interface VolumeTier {
     minQty: string;
+    maxQty?: string;
     discountPercentage: string;
     eligibleVariantIds: string[];
 }
@@ -41,9 +42,9 @@ const VolumeForm = forwardRef<VolumeFormHandle, { initialConfig?: any }>(({ init
 
     // MultiTier
     const [tiers, setTiers] = useState<VolumeTier[]>([
-        { minQty: '3', discountPercentage: '10', eligibleVariantIds: [] },
-        { minQty: '5', discountPercentage: '20', eligibleVariantIds: [] },
-        { minQty: '10', discountPercentage: '30', eligibleVariantIds: [] },
+        { minQty: '3', maxQty: '', discountPercentage: '10', eligibleVariantIds: [] },
+        { minQty: '5', maxQty: '', discountPercentage: '20', eligibleVariantIds: [] },
+        { minQty: '10', maxQty: '', discountPercentage: '30', eligibleVariantIds: [] },
     ]);
 
     // MixMatch
@@ -76,6 +77,7 @@ const VolumeForm = forwardRef<VolumeFormHandle, { initialConfig?: any }>(({ init
             } else {
                 setTiers(initialConfig.tiers.map((t: any) => ({
                     minQty: String(t.minQty),
+                    maxQty: t.maxQty ? String(t.maxQty) : '',
                     discountPercentage: String(t.discountPercentage),
                     eligibleVariantIds: t.eligibleVariantIds || [],
                 })));
@@ -84,7 +86,7 @@ const VolumeForm = forwardRef<VolumeFormHandle, { initialConfig?: any }>(({ init
     }, [initialConfig]);
 
     const addTier = useCallback(() => {
-        setTiers(prev => [...prev, { minQty: '', discountPercentage: '', eligibleVariantIds: [] }]);
+        setTiers(prev => [...prev, { minQty: '', maxQty: '', discountPercentage: '', eligibleVariantIds: [] }]);
     }, []);
 
     const removeTier = useCallback((index: number) => {
@@ -124,6 +126,7 @@ const VolumeForm = forwardRef<VolumeFormHandle, { initialConfig?: any }>(({ init
                     ...base,
                     tiers: tiers.map(t => ({
                         minQty: parseInt(t.minQty, 10),
+                        ...(t.maxQty ? { maxQty: parseInt(t.maxQty, 10) } : {}),
                         discountPercentage: parseInt(t.discountPercentage, 10),
                         eligibleVariantIds: t.eligibleVariantIds,
                     })),
@@ -203,6 +206,7 @@ const VolumeForm = forwardRef<VolumeFormHandle, { initialConfig?: any }>(({ init
                                 <FormLayout>
                                     <FormLayout.Group>
                                         <TextField type="number" label="Min Qty" value={tier.minQty} onChange={(v) => updateTier(index, 'minQty', v)} autoComplete="off" />
+                                        <TextField type="number" label="Max Qty" value={tier.maxQty || ''} onChange={(v) => updateTier(index, 'maxQty', v)} autoComplete="off" helpText="Optional. Caps discount item count" />
                                         <TextField type="number" label="Discount %" value={tier.discountPercentage} onChange={(v) => updateTier(index, 'discountPercentage', v)} autoComplete="off" />
                                     </FormLayout.Group>
                                     <ProductPicker 
