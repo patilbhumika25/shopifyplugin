@@ -632,8 +632,8 @@ async function updateShopifyDiscount(client, { discountId, title, type, configur
   }
 }
 
-// Update the shop metafield to expose free gift config to the storefront App Embed
-async function updateShopMetafield(client, configurationJson) {
+// Update the shop metafield to expose config to the storefront App Embed
+async function updateShopMetafield(client, key, configurationJson) {
   const mutation = `
     mutation metafieldsSet($metafields: [MetafieldsSetInput!]!) {
       metafieldsSet(metafields: $metafields) {
@@ -660,7 +660,7 @@ async function updateShopMetafield(client, configurationJson) {
           {
             ownerId: shopId,
             namespace: "custom_discounts",
-            key: "free_gift_config",
+            key: key,
             type: "json",
             value: typeof configurationJson === 'string' ? configurationJson : JSON.stringify(configurationJson)
           }
@@ -680,9 +680,9 @@ async function updateShopMetafield(client, configurationJson) {
 }
 
 // Clear the shop metafield so the App Embed stops triggering auto-adds
-async function clearShopMetafield(client) {
-  console.log('Clearing free_gift_config metafield...');
-  await updateShopMetafield(client, "{}");
+async function clearShopMetafield(client, key) {
+  console.log(`Clearing ${key} metafield...`);
+  await updateShopMetafield(client, key, "{}");
 }
 
 app.get('/api/offers', async (req, res) => {
@@ -792,9 +792,11 @@ app.post('/api/offers', async (req, res) => {
         }
       }
 
-      // Sync Free Gift Metafields for App Embeds
+      // Sync Metafields for App Embeds
       if (type === 'FREE_GIFT') {
-        await updateShopMetafield(client, configStr);
+        await updateShopMetafield(client, 'free_gift_config', configStr);
+      } else if (type === 'BOGO' || type === 'COMBO') {
+        await updateShopMetafield(client, 'bogo_config', configStr);
       }
     } else {
       console.log('ℹ️ No GraphQL session — offer saved locally only (Shopify discount not created)');
@@ -880,12 +882,13 @@ app.put('/api/offers/:id', async (req, res) => {
       }
     });
 
-    // Sync Free Gift Metafields for App Embeds
-    if (type === 'FREE_GIFT' && configurationJson) {
+    // Sync Metafields for App Embeds
+    if ((type === 'FREE_GIFT' || type === 'BOGO' || type === 'COMBO') && configurationJson) {
       try {
         const client = await getGraphQLClient(req, res, shop);
         if (client) {
-          await updateShopMetafield(client, configurationJson);
+          const key = type === 'FREE_GIFT' ? 'free_gift_config' : 'bogo_config';
+          await updateShopMetafield(client, key, configurationJson);
         }
       } catch (err) {
         console.error('⚠️ Shopify metafield sync error:', err.message);
@@ -1064,14 +1067,15 @@ app.patch('/api/offers/:id/status', async (req, res) => {
           }
         }
 
-        // 2. Clear or Restore Free Gift Metafield for App Embeds
-        if (existing.type === 'FREE_GIFT') {
+        // 2. Clear or Restore Metafield for App Embeds
+        if (existing.type === 'FREE_GIFT' || existing.type === 'BOGO' || existing.type === 'COMBO') {
+          const key = existing.type === 'FREE_GIFT' ? 'free_gift_config' : 'bogo_config';
           if (status === 'ACTIVE' && oldStatus !== 'ACTIVE') {
-            console.log('Restoring free gift metafield configuration...');
-            await updateShopMetafield(client, existing.configurationJson);
+            console.log(`Restoring ${key} configuration...`);
+            await updateShopMetafield(client, key, existing.configurationJson);
           } else if (status !== 'ACTIVE' && oldStatus === 'ACTIVE') {
-            console.log('Offer disabled: Clearing free gift metafield...');
-            await clearShopMetafield(client);
+            console.log(`Offer disabled: Clearing ${key}...`);
+            await clearShopMetafield(client, key);
           }
         }
       }
@@ -1115,10 +1119,11 @@ app.delete('/api/offers/:id', async (req, res) => {
         console.log(`🗑️ Shopify discount deleted: ${offer.shopifyDiscountId}`);
       }
 
-      // Clear Free Gift metafield if a free gift offer is deleted
-      if (offer.type === 'FREE_GIFT') {
-        console.log('Offer deleted: Clearing free gift metafield...');
-        await clearShopMetafield(client);
+      // Clear metafield if a relevant offer is deleted
+      if (offer.type === 'FREE_GIFT' || offer.type === 'BOGO' || offer.type === 'COMBO') {
+        const key = offer.type === 'FREE_GIFT' ? 'free_gift_config' : 'bogo_config';
+        console.log(`Offer deleted: Clearing ${key}...`);
+        await clearShopMetafield(client, key);
       }
     }
 
