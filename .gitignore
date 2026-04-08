@@ -25,3 +25,16 @@ Thumbs.db
 # Logs
 *.log
 npm-debug.log*
+
+# Sensitive / local-only files
+sessions.json
+force_sync.js
+test_mystery_gift.js
+test-bogo.js
+test_discount.js
+check_graphql.js
+check_graphql.cjs
+check_metafields.js
+check_offers.js
+offers_dump.json
+metafields.txt
