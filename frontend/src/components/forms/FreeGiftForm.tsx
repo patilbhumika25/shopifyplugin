@@ -27,6 +27,7 @@ const FreeGiftForm = forwardRef<FreeGiftFormHandle, { initialConfig?: any }>(({ 
 
     // Basic / TimeLimited / AutoAdd
     const [minSpend, setMinSpend] = useState('25');
+    const [minQuantity, setMinQuantity] = useState('2');
     const [giftVariantIdList, setGiftVariantIdList] = useState<string[]>([]);
 
     // ProductPurchase
@@ -53,6 +54,7 @@ const FreeGiftForm = forwardRef<FreeGiftFormHandle, { initialConfig?: any }>(({ 
         if (!initialConfig) return;
         setSubType(initialConfig.configType || 'BASIC');
         if (initialConfig.minimumSpend) setMinSpend(String(initialConfig.minimumSpend));
+        if (initialConfig.minQuantity) setMinQuantity(String(initialConfig.minQuantity));
         if (initialConfig.giftVariantId) setGiftVariantIdList([initialConfig.giftVariantId]);
         if (initialConfig.triggerProductId) setTriggerProductIdList([initialConfig.triggerProductId]);
         if (initialConfig.giftVariantIds) setGiftVariantIdsList(initialConfig.giftVariantIds);
@@ -88,7 +90,7 @@ const FreeGiftForm = forwardRef<FreeGiftFormHandle, { initialConfig?: any }>(({ 
             case 'MYSTERY':
                 return {
                     ...base,
-                    minimumSpend: parseFloat(minSpend),
+                    minQuantity: parseInt(minQuantity, 10),
                     giftVariantIds: giftVariantIdsList,
                 };
             case 'ORDER_VALUE_CHOICE':
@@ -121,7 +123,7 @@ const FreeGiftForm = forwardRef<FreeGiftFormHandle, { initialConfig?: any }>(({ 
             default:
                 return base;
         }
-    }, [subType, minSpend, giftVariantIdList, triggerProductIdList, giftVariantIdsList, tiers, startDate, endDate, maxGifts]);
+    }, [subType, minSpend, minQuantity, giftVariantIdList, triggerProductIdList, giftVariantIdsList, tiers, startDate, endDate, maxGifts]);
 
     useImperativeHandle(ref, () => ({ getConfig: buildConfig }), [buildConfig]);
 
@@ -155,8 +157,8 @@ const FreeGiftForm = forwardRef<FreeGiftFormHandle, { initialConfig?: any }>(({ 
             {/* ── MYSTERY ───────────────────────────────── */}
             {subType === 'MYSTERY' && (
                 <FormLayout>
-                    <TextField type="number" label="Cart Minimum Spend" value={minSpend} onChange={setMinSpend} autoComplete="off" />
-                    <ProductPicker label="Gift Pool" selectedIds={giftVariantIdsList} onChange={setGiftVariantIdsList} resourceType="variant" helpText="Customer gets whichever mystery gift is in their cart" />
+                    <TextField type="number" label="Minimum Items in Cart" value={minQuantity} onChange={setMinQuantity} autoComplete="off" helpText="e.g., set to 2 so that when the customer adds 2 products, a mystery gift is triggered" />
+                    <ProductPicker label="Mystery Gift Pool" selectedIds={giftVariantIdsList} onChange={setGiftVariantIdsList} resourceType="variant" helpText="A random gift from this pool will be auto-added to the cart" />
                 </FormLayout>
             )}
 
