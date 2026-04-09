@@ -6,8 +6,11 @@ const FREE_GIFT_SUB_TYPES = [
     { label: 'Basic (Min Spend → Free Gift)', value: 'BASIC' },
     { label: 'Gift on Specific Product Purchase', value: 'PRODUCT_PURCHASE' },
     { label: 'Gift on Subscription Purchase', value: 'SUBSCRIPTION' },
+    { label: '🎁 Gift on First Subscription Order Only', value: 'SUBSCRIPTION_FIRST' },
     { label: 'Mystery Gift (Random from Pool)', value: 'MYSTERY' },
     { label: 'Order Value Gift Choice (Tiered)', value: 'ORDER_VALUE_CHOICE' },
+    { label: '🎯 Gift Choice on Order Value (Customer Picks 1)', value: 'ORDER_VALUE_PICK_ONE' },
+    { label: '🎁 Multi-Gift Pick (Customer Picks N of M)', value: 'ORDER_VALUE_MULTI_PICK' },
     { label: 'Multi-Choice (Pick X of Y Gifts)', value: 'MULTI_CHOICE' },
     { label: 'Time-Limited Free Gift', value: 'TIME_LIMITED' },
     { label: 'Auto-Add Gift (Cart Transform)', value: 'AUTO_ADD' },
@@ -33,7 +36,7 @@ const FreeGiftForm = forwardRef<FreeGiftFormHandle, { initialConfig?: any }>(({ 
     // ProductPurchase
     const [triggerProductIdList, setTriggerProductIdList] = useState<string[]>([]);
 
-    // Mystery
+    // Mystery / MultiChoice / PickOne / MultiPick
     const [giftVariantIdsList, setGiftVariantIdsList] = useState<string[]>([]);
 
     // OrderValueChoice tiers
@@ -46,7 +49,7 @@ const FreeGiftForm = forwardRef<FreeGiftFormHandle, { initialConfig?: any }>(({ 
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
 
-    // MultiChoice
+    // MultiChoice / MultiPick
     const [maxGifts, setMaxGifts] = useState('2');
 
     // Pre-fill from initialConfig when editing
@@ -113,7 +116,22 @@ const FreeGiftForm = forwardRef<FreeGiftFormHandle, { initialConfig?: any }>(({ 
                 return { ...base, minimumSpend: parseFloat(minSpend), giftVariantId: giftVariantIdList[0] || '' };
             case 'SUBSCRIPTION':
                 return { ...base, giftVariantId: giftVariantIdList[0] || '' };
+            case 'SUBSCRIPTION_FIRST':
+                return { ...base, giftVariantId: giftVariantIdList[0] || '' };
             case 'MULTI_CHOICE':
+                return {
+                    ...base,
+                    minimumSpend: parseFloat(minSpend),
+                    giftVariantIds: giftVariantIdsList,
+                    maxGifts: parseInt(maxGifts, 10),
+                };
+            case 'ORDER_VALUE_PICK_ONE':
+                return {
+                    ...base,
+                    minimumSpend: parseFloat(minSpend),
+                    giftVariantIds: giftVariantIdsList,
+                };
+            case 'ORDER_VALUE_MULTI_PICK':
                 return {
                     ...base,
                     minimumSpend: parseFloat(minSpend),
@@ -216,12 +234,84 @@ const FreeGiftForm = forwardRef<FreeGiftFormHandle, { initialConfig?: any }>(({ 
                 </FormLayout>
             )}
 
+            {/* ── SUBSCRIPTION FIRST ────────────────────── */}
+            {subType === 'SUBSCRIPTION_FIRST' && (
+                <FormLayout>
+                    <Text variant="bodySm" as="p" tone="subdued">
+                        This gift is applied <strong>only on the customer's very first subscription order</strong>. Renewal orders will not receive the gift.
+                    </Text>
+                    <ProductPicker label="Gift Product" selectedIds={giftVariantIdList} onChange={setGiftVariantIdList} multiple={false} resourceType="variant" helpText="The free welcome gift — given once per customer on their first subscription purchase" />
+                </FormLayout>
+            )}
+
             {/* ── MULTI CHOICE ──────────────────────────── */}
             {subType === 'MULTI_CHOICE' && (
                 <FormLayout>
                     <TextField type="number" label="Cart Minimum Spend" value={minSpend} onChange={setMinSpend} autoComplete="off" />
                     <ProductPicker label="Gift Pool (all options)" selectedIds={giftVariantIdsList} onChange={setGiftVariantIdsList} resourceType="variant" helpText="Customer can pick from these gifts" />
                     <TextField type="number" label="Max Gifts Customer Can Pick" value={maxGifts} onChange={setMaxGifts} autoComplete="off" helpText="e.g., 2 means 'pick any 2 out of the pool'" />
+                </FormLayout>
+            )}
+
+            {/* ── ORDER VALUE PICK ONE ──────────────────── */}
+            {subType === 'ORDER_VALUE_PICK_ONE' && (
+                <FormLayout>
+                    <Text variant="bodySm" as="p" tone="subdued">
+                        When the customer's cart reaches the minimum spend, a <strong>Gift Picker widget</strong> appears
+                        on the storefront letting them choose exactly <strong>1 free gift</strong> from the options below.
+                        Add the <strong>"Gift Picker Widget"</strong> App Embed block in your Theme Customizer and
+                        configure the same gift products there for the display UI.
+                    </Text>
+                    <TextField
+                        type="number"
+                        label="Minimum Cart Spend"
+                        value={minSpend}
+                        onChange={setMinSpend}
+                        autoComplete="off"
+                        helpText="Gift picker appears when cart total meets this amount"
+                    />
+                    <ProductPicker
+                        label="Gift Options (customer picks 1)"
+                        selectedIds={giftVariantIdsList}
+                        onChange={setGiftVariantIdsList}
+                        resourceType="variant"
+                        helpText="Add 2-4 gift variants. The Shopify Function will discount whichever one the customer adds to cart."
+                    />
+                </FormLayout>
+            )}
+
+            {/* ── ORDER VALUE MULTI PICK ────────────────── */}
+            {subType === 'ORDER_VALUE_MULTI_PICK' && (
+                <FormLayout>
+                    <Text variant="bodySm" as="p" tone="subdued">
+                        Customer reaches spend threshold → a <strong>Multi-Gift Picker widget</strong> lets them
+                        select <strong>up to N gifts</strong> from a pool of options you define.
+                        Add the <strong>"Multi-Gift Picker Widget"</strong> App Embed block in your Theme Customizer
+                        and configure the same gift products there.
+                    </Text>
+                    <TextField
+                        type="number"
+                        label="Minimum Cart Spend"
+                        value={minSpend}
+                        onChange={setMinSpend}
+                        autoComplete="off"
+                        helpText="Widget appears when cart total meets this amount"
+                    />
+                    <ProductPicker
+                        label="Gift Pool (all options)"
+                        selectedIds={giftVariantIdsList}
+                        onChange={setGiftVariantIdsList}
+                        resourceType="variant"
+                        helpText="Add 3-6 gift variants the customer can choose from"
+                    />
+                    <TextField
+                        type="number"
+                        label="Max Gifts Customer Can Pick"
+                        value={maxGifts}
+                        onChange={setMaxGifts}
+                        autoComplete="off"
+                        helpText="e.g., 2 means 'pick any 2 out of the pool'. Must be less than total gift options."
+                    />
                 </FormLayout>
             )}
         </BlockStack>

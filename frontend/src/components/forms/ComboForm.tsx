@@ -1,4 +1,4 @@
-import { FormLayout, TextField, Select, BlockStack, Divider } from '@shopify/polaris';
+import { FormLayout, TextField, Select, BlockStack, Divider, Text, Banner } from '@shopify/polaris';
 import { useState, useCallback, useEffect, forwardRef, useImperativeHandle } from 'react';
 import ProductPicker from '../ProductPicker';
 
@@ -7,6 +7,7 @@ const COMBO_SUB_TYPES = [
     { label: 'BOGO + Extra Discount Combo', value: 'BOGO_DISCOUNT' },
     { label: 'BOGO + Free Gift', value: 'BOGO_GIFT' },
     { label: 'Bundle + Free Gift', value: 'BUNDLE_GIFT' },
+    { label: 'Bundle + Gift (Fixed Price Bundle)', value: 'BUNDLE_PRICE_GIFT' },
 ];
 
 export interface ComboFormHandle {
@@ -35,6 +36,10 @@ const ComboForm = forwardRef<ComboFormHandle, { initialConfig?: any }>(({ initia
     const [giftVariantIdsList, setGiftVariantIdsList] = useState<string[]>([]); // mystery pool
     const [bundleQty, setBundleQty] = useState('3');
 
+    // BundlePriceGift
+    const [bundleProductIds, setBundleProductIds] = useState<string[]>([]);
+    const [bundlePrice, setBundlePrice] = useState('1499');
+
     // Pre-fill from initialConfig
     useEffect(() => {
         if (!initialConfig) return;
@@ -55,6 +60,8 @@ const ComboForm = forwardRef<ComboFormHandle, { initialConfig?: any }>(({ initia
         if (initialConfig.giftVariantId) setGiftVariantIdList([initialConfig.giftVariantId]);
         if (initialConfig.giftVariantIds) setGiftVariantIdsList(initialConfig.giftVariantIds);
         if (initialConfig.bundleQuantity) setBundleQty(String(initialConfig.bundleQuantity));
+        if (initialConfig.bundleProductIds) setBundleProductIds(initialConfig.bundleProductIds);
+        if (initialConfig.bundlePrice !== undefined) setBundlePrice(String(initialConfig.bundlePrice));
     }, [initialConfig]);
 
     const buildConfig = useCallback(() => {
@@ -96,10 +103,18 @@ const ComboForm = forwardRef<ComboFormHandle, { initialConfig?: any }>(({ initia
                     bundleQuantity: parseInt(bundleQty, 10),
                     giftVariantId: giftVariantIdList[0] || '',
                 };
+            case 'BUNDLE_PRICE_GIFT':
+                return {
+                    ...base,
+                    bundleProductIds: bundleProductIds,
+                    bundleQuantity: parseInt(bundleQty, 10),
+                    bundlePrice: parseInt(bundlePrice, 10),
+                    giftVariantId: giftVariantIdList[0] || '',
+                };
             default:
                 return base;
         }
-    }, [subType, minQty, targetVariantList, discountType, discountValue, buyQty, getQty, bogoDiscountPct, additionalDiscountPct, giftVariantIdList, giftVariantIdsList, bundleQty]);
+    }, [subType, minQty, targetVariantList, discountType, discountValue, buyQty, getQty, bogoDiscountPct, additionalDiscountPct, giftVariantIdList, giftVariantIdsList, bundleQty, bundleProductIds, bundlePrice]);
 
     useImperativeHandle(ref, () => ({ getConfig: buildConfig }), [buildConfig]);
 
@@ -185,6 +200,36 @@ const ComboForm = forwardRef<ComboFormHandle, { initialConfig?: any }>(({ initia
                 <FormLayout>
                     <TextField type="number" label="Bundle Quantity (non-gift items)" value={bundleQty} onChange={setBundleQty} autoComplete="off" helpText="Buy this many items and the gift becomes free" />
                     <ProductPicker label="Gift Product" selectedIds={giftVariantIdList} onChange={setGiftVariantIdList} multiple={false} resourceType="variant" />
+                </FormLayout>
+            )}
+
+            {/* ── BUNDLE + GIFT (Fixed Price Bundle) ──────── */}
+            {subType === 'BUNDLE_PRICE_GIFT' && (
+                <FormLayout>
+                    <Text variant="headingSm" as="h3">Bundle Products</Text>
+                    <ProductPicker
+                        label="Bundle Products (optional)"
+                        selectedIds={bundleProductIds}
+                        onChange={setBundleProductIds}
+                        helpText="Select the products that form the bundle. Leave empty to count all cart items."
+                    />
+                    <FormLayout.Group>
+                        <TextField type="number" label="Bundle Quantity" value={bundleQty} onChange={setBundleQty} autoComplete="off" helpText="How many items the customer must buy" />
+                        <TextField type="number" label="Bundle Price (₹)" value={bundlePrice} onChange={setBundlePrice} autoComplete="off" helpText="Fixed total price for the bundle (e.g., ₹1499)" />
+                    </FormLayout.Group>
+                    <Divider />
+                    <Text variant="headingSm" as="h3">Free Gift</Text>
+                    <ProductPicker
+                        label="Gift Product"
+                        selectedIds={giftVariantIdList}
+                        onChange={setGiftVariantIdList}
+                        multiple={false}
+                        resourceType="variant"
+                        helpText="This product will be added free when the bundle is purchased"
+                    />
+                    <Banner tone="info">
+                        <p>Buy <strong>{bundleQty}</strong> products for <strong>₹{bundlePrice}</strong> + get a <strong>free gift</strong></p>
+                    </Banner>
                 </FormLayout>
             )}
         </BlockStack>

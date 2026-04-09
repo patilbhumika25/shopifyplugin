@@ -261,6 +261,8 @@ export default function CreateOffer() {
                                 <Text variant="bodySm" as="p"><strong>Basic:</strong> Buy X items, get Y items free/discounted</Text>
                                 <Text variant="bodySm" as="p"><strong>Cheapest Free:</strong> Add N items, cheapest is free</Text>
                                 <Text variant="bodySm" as="p"><strong>Multi-Tier:</strong> Multiple buy/get tiers</Text>
+                                <Text variant="bodySm" as="p"><strong>Mix & Match BOGO:</strong> Buy X from Collection A, get Y free from Collection B</Text>
+                                <Text variant="bodySm" as="p"><strong>Scoped BOGO:</strong> Only applies to selected sizes, colors, or categories</Text>
                             </BlockStack>
                         </Card>
                     )}

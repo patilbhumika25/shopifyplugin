@@ -1,4 +1,4 @@
-import { FormLayout, TextField, Select, Button, InlineStack, BlockStack, Text, Divider, Card } from '@shopify/polaris';
+import { FormLayout, TextField, Select, Button, InlineStack, BlockStack, Text, Divider, Card, Banner } from '@shopify/polaris';
 import { useState, useCallback, useEffect, forwardRef, useImperativeHandle } from 'react';
 import ProductPicker from '../ProductPicker';
 
@@ -8,8 +8,10 @@ const BOGO_SUB_TYPES = [
     { label: 'Buy X, Get Different Product Y', value: 'DIFFERENT_PRODUCT' },
     { label: 'Multi-Tier BOGO', value: 'MULTI_TIER' },
     { label: 'Mix & Match (Multiple Products)', value: 'MIX_MATCH' },
+    { label: 'Mix & Match BOGO (Cross-Collection)', value: 'MIX_MATCH_BOGO' },
     { label: 'Quantity-Limited BOGO', value: 'QUANTITY_LIMITED' },
     { label: 'Variant / Product Scoped BOGO', value: 'VARIANT_SCOPED' },
+    { label: 'BOGO on Specific Variants / Collections', value: 'COLLECTION_VARIANT_SCOPED' },
 ];
 
 interface Tier {
@@ -51,6 +53,14 @@ const BogoForm = forwardRef<BogoFormHandle, { initialConfig?: any }>(({ initialC
     // Basic product scope (optional — for "Same Product" BOGO)
     const [basicProductIds, setBasicProductIds] = useState<string[]>([]);
 
+    // MixMatchBogo: separate "buy" (Collection A) and "get" (Collection B) product lists
+    const [mixMatchBuyProductIds, setMixMatchBuyProductIds] = useState<string[]>([]);
+    const [mixMatchGetProductIds, setMixMatchGetProductIds] = useState<string[]>([]);
+
+    // CollectionVariantScoped: products (categories) + variants (sizes/colors)
+    const [scopedProductIds, setScopedProductIds] = useState<string[]>([]);
+    const [scopedVariantIds, setScopedVariantIds] = useState<string[]>([]);
+
     // Pre-fill from initialConfig when editing
     useEffect(() => {
         if (!initialConfig) return;
@@ -72,6 +82,16 @@ const BogoForm = forwardRef<BogoFormHandle, { initialConfig?: any }>(({ initialC
         // Restore basic product scope
         if (initialConfig.configType === 'BASIC' && initialConfig.eligibleProductIds) {
             setBasicProductIds(initialConfig.eligibleProductIds);
+        }
+        // MIX_MATCH_BOGO: restore buy/get product lists
+        if (initialConfig.configType === 'MIX_MATCH_BOGO') {
+            if (initialConfig.buyProductIds) setMixMatchBuyProductIds(initialConfig.buyProductIds);
+            if (initialConfig.getProductIds) setMixMatchGetProductIds(initialConfig.getProductIds);
+        }
+        // COLLECTION_VARIANT_SCOPED: restore scoped products + variants
+        if (initialConfig.configType === 'COLLECTION_VARIANT_SCOPED') {
+            if (initialConfig.scopedProductIds) setScopedProductIds(initialConfig.scopedProductIds);
+            if (initialConfig.scopedVariantIds) setScopedVariantIds(initialConfig.scopedVariantIds);
         }
         if (initialConfig.tiers) setTiers(initialConfig.tiers.map((t: any) => ({
             buyQuantity: String(t.buyQuantity),
@@ -142,6 +162,17 @@ const BogoForm = forwardRef<BogoFormHandle, { initialConfig?: any }>(({ initialC
                     discountValue: parseInt(discountValue, 10),
                     discountPercentage: discountType === 'PERCENTAGE' ? parseInt(discountValue, 10) : 0,
                 };
+            case 'MIX_MATCH_BOGO':
+                return {
+                    ...base,
+                    buyProductIds: mixMatchBuyProductIds,
+                    getProductIds: mixMatchGetProductIds,
+                    buyQuantity: parseInt(buyQty, 10),
+                    getQuantity: parseInt(getQty, 10),
+                    discountType: 'PERCENTAGE',
+                    discountValue: 100,
+                    discountPercentage: 100,
+                };
             case 'QUANTITY_LIMITED':
                 return {
                     ...base,
@@ -162,10 +193,21 @@ const BogoForm = forwardRef<BogoFormHandle, { initialConfig?: any }>(({ initialC
                     discountValue: parseInt(discountValue, 10),
                     discountPercentage: discountType === 'PERCENTAGE' ? parseInt(discountValue, 10) : 0,
                 };
+            case 'COLLECTION_VARIANT_SCOPED':
+                return {
+                    ...base,
+                    scopedProductIds: scopedProductIds,
+                    scopedVariantIds: scopedVariantIds,
+                    buyQuantity: parseInt(buyQty, 10),
+                    getQuantity: parseInt(getQty, 10),
+                    discountType: discountType,
+                    discountValue: parseInt(discountValue, 10),
+                    discountPercentage: discountType === 'PERCENTAGE' ? parseInt(discountValue, 10) : 0,
+                };
             default:
                 return base;
         }
-    }, [subType, buyQty, getQty, discountType, discountValue, maxApplications, minQty, buyVariantIdsList, getVariantIdList, tiers, eligibleIdsList, basicProductIds]);
+    }, [subType, buyQty, getQty, discountType, discountValue, maxApplications, minQty, buyVariantIdsList, getVariantIdList, tiers, eligibleIdsList, basicProductIds, mixMatchBuyProductIds, mixMatchGetProductIds, scopedProductIds, scopedVariantIds]);
 
     useImperativeHandle(ref, () => ({
         getConfig: buildConfig,
@@ -330,6 +372,30 @@ const BogoForm = forwardRef<BogoFormHandle, { initialConfig?: any }>(({ initialC
                 </FormLayout>
             )}
 
+            {/* ── MIX & MATCH BOGO (Cross-Collection) ───────── */}
+            {subType === 'MIX_MATCH_BOGO' && (
+                <FormLayout>
+                    <ProductPicker
+                        label="Collection A — Buy Products"
+                        selectedIds={mixMatchBuyProductIds}
+                        onChange={setMixMatchBuyProductIds}
+                        helpText="Customer must buy from these products (Collection A)"
+                    />
+                    <TextField type="number" label="Buy Quantity (from Collection A)" value={buyQty} onChange={setBuyQty} autoComplete="off" helpText="How many items the customer must buy from Collection A" />
+                    <Divider />
+                    <ProductPicker
+                        label="Collection B — Free Products"
+                        selectedIds={mixMatchGetProductIds}
+                        onChange={setMixMatchGetProductIds}
+                        helpText="Customer gets free item(s) from these products (Collection B)"
+                    />
+                    <TextField type="number" label="Get Quantity (Free from Collection B)" value={getQty} onChange={setGetQty} autoComplete="off" helpText="How many items the customer gets free from Collection B" />
+                    <Banner tone="info">
+                        <p>Buy any <strong>{buyQty}</strong> from Collection A → Get <strong>{getQty}</strong> free from Collection B</p>
+                    </Banner>
+                </FormLayout>
+            )}
+
             {/* ── QUANTITY LIMITED ─────────────────────────── */}
             {subType === 'QUANTITY_LIMITED' && (
                 <FormLayout>
@@ -391,6 +457,54 @@ const BogoForm = forwardRef<BogoFormHandle, { initialConfig?: any }>(({ initialC
                             autoComplete="off"
                         />
                     </FormLayout.Group>
+                </FormLayout>
+            )}
+
+            {/* ── COLLECTION / VARIANT SCOPED BOGO ─────────── */}
+            {subType === 'COLLECTION_VARIANT_SCOPED' && (
+                <FormLayout>
+                    <Text variant="headingSm" as="h3">Scope by Products (Categories / Collections)</Text>
+                    <ProductPicker
+                        label="Eligible Products (optional)"
+                        selectedIds={scopedProductIds}
+                        onChange={setScopedProductIds}
+                        helpText="Select products from specific categories. All variants of these products will be eligible."
+                    />
+                    <Divider />
+                    <Text variant="headingSm" as="h3">Scope by Specific Variants (Sizes / Colors)</Text>
+                    <ProductPicker
+                        label="Eligible Variants (optional)"
+                        selectedIds={scopedVariantIds}
+                        onChange={setScopedVariantIds}
+                        resourceType="variant"
+                        helpText="Select specific variants (e.g. Large, Red, Pack of 6). Only these variants will be eligible."
+                    />
+                    <Divider />
+                    <FormLayout.Group>
+                        <TextField type="number" label="Buy Quantity" value={buyQty} onChange={setBuyQty} autoComplete="off" />
+                        <TextField type="number" label="Get Quantity (Free)" value={getQty} onChange={setGetQty} autoComplete="off" />
+                    </FormLayout.Group>
+                    <FormLayout.Group>
+                        <Select
+                            label="Discount Type"
+                            options={[
+                                { label: 'Percentage Off (%)', value: 'PERCENTAGE' },
+                                { label: 'Fixed Package Price (₹)', value: 'FIXED_AMOUNT' }
+                            ]}
+                            value={discountType}
+                            onChange={setDiscountType}
+                        />
+                        <TextField
+                            type="number"
+                            label={discountType === 'PERCENTAGE' ? "Discount %" : "Total Package Price (₹)"}
+                            value={discountValue}
+                            onChange={setDiscountValue}
+                            autoComplete="off"
+                        />
+                    </FormLayout.Group>
+                    <Banner tone="info">
+                        <p>BOGO applies <strong>only</strong> to the selected products and/or variants. At least one scope must be selected.</p>
+                    </Banner>
                 </FormLayout>
             )}
         </BlockStack>

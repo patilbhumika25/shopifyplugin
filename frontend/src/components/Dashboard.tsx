@@ -27,6 +27,10 @@ const CONFIG_TYPE_LABELS: Record<string, string> = {
     BOGO_DISCOUNT: 'BOGO + Discount',
     BOGO_GIFT: 'BOGO + Gift',
     BUNDLE_GIFT: 'Bundle + Gift',
+    SUBSCRIPTION: 'Subscription Gift',
+    SUBSCRIPTION_FIRST: '🎁 First-Order Sub Gift',
+    ORDER_VALUE_PICK_ONE: '🎯 Gift Choice',
+    ORDER_VALUE_MULTI_PICK: '🎁 Multi-Gift Pick',
 };
 
 export default function Dashboard() {
