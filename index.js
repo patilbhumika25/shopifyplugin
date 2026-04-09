@@ -685,6 +685,40 @@ async function clearShopMetafield(client, key) {
   await updateShopMetafield(client, key, "{}");
 }
 
+// Enrich gift variant IDs with product title and image URL for storefront widgets
+async function enrichGiftVariants(client, giftVariantIds) {
+  if (!Array.isArray(giftVariantIds) || giftVariantIds.length === 0) return [];
+  const query = `
+    query getVariants($ids: [ID!]!) {
+      nodes(ids: $ids) {
+        ... on ProductVariant {
+          id
+          title
+          product {
+            title
+            featuredImage {
+              url(transform: { maxWidth: 220, maxHeight: 220 })
+            }
+          }
+        }
+      }
+    }
+  `;
+  try {
+    const res = await client.request(query, { variables: { ids: giftVariantIds } });
+    return (res.data?.nodes || []).map(v => ({
+      variantId: v.id,
+      numericId: (v.id || '').replace('gid://shopify/ProductVariant/', ''),
+      title: v.product?.title || 'Gift',
+      variantTitle: v.title && v.title !== 'Default Title' ? v.title : null,
+      imageUrl: v.product?.featuredImage?.url || null,
+    })).filter(v => v.numericId);
+  } catch (err) {
+    console.error('Error enriching gift variants:', err.message);
+    return [];
+  }
+}
+
 app.get('/api/offers', async (req, res) => {
   try {
     const shop = await getShopFromSession(req, res);
@@ -794,6 +828,18 @@ app.post('/api/offers', async (req, res) => {
 
       // Sync Metafields for App Embeds
       if (type === 'FREE_GIFT') {
+        // Enrich gift options with product info for ORDER_VALUE_PICK_ONE / ORDER_VALUE_MULTI_PICK
+        let enrichedConfig = JSON.parse(configStr);
+        if (
+          (enrichedConfig.configType === 'ORDER_VALUE_PICK_ONE' || enrichedConfig.configType === 'ORDER_VALUE_MULTI_PICK') &&
+          Array.isArray(enrichedConfig.giftVariantIds) && enrichedConfig.giftVariantIds.length > 0
+        ) {
+          const giftOptions = await enrichGiftVariants(client, enrichedConfig.giftVariantIds);
+          if (giftOptions.length > 0) {
+            enrichedConfig.giftOptions = giftOptions;
+            configStr = JSON.stringify(enrichedConfig);
+          }
+        }
         await updateShopMetafield(client, 'free_gift_config', configStr);
       } else if (type === 'BOGO' || type === 'COMBO') {
         await updateShopMetafield(client, 'bogo_config', configStr);
@@ -888,7 +934,22 @@ app.put('/api/offers/:id', async (req, res) => {
         const client = await getGraphQLClient(req, res, shop);
         if (client) {
           const key = type === 'FREE_GIFT' ? 'free_gift_config' : 'bogo_config';
-          await updateShopMetafield(client, key, configurationJson);
+          let metafieldValue = configurationJson;
+          // Enrich gift options for ORDER_VALUE_PICK_ONE / ORDER_VALUE_MULTI_PICK
+          if (type === 'FREE_GIFT') {
+            const parsed = typeof configurationJson === 'string' ? JSON.parse(configurationJson) : configurationJson;
+            if (
+              (parsed.configType === 'ORDER_VALUE_PICK_ONE' || parsed.configType === 'ORDER_VALUE_MULTI_PICK') &&
+              Array.isArray(parsed.giftVariantIds) && parsed.giftVariantIds.length > 0
+            ) {
+              const giftOptions = await enrichGiftVariants(client, parsed.giftVariantIds);
+              if (giftOptions.length > 0) {
+                parsed.giftOptions = giftOptions;
+                metafieldValue = JSON.stringify(parsed);
+              }
+            }
+          }
+          await updateShopMetafield(client, key, metafieldValue);
         }
       } catch (err) {
         console.error('⚠️ Shopify metafield sync error:', err.message);
