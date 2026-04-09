@@ -794,7 +794,7 @@ app.post('/api/offers', async (req, res) => {
     if (!shop) return res.status(401).send('Unauthorized');
 
     const { title, type, configType, configurationJson } = req.body;
-    const configStr = typeof configurationJson === 'string'
+    let configStr = typeof configurationJson === 'string'
       ? configurationJson
       : JSON.stringify(configurationJson);
 
