@@ -1,0 +1,384 @@
+{% comment %}
+  Auto-Add Free Gift (App Embed Block)
+  Automatically adds a free gift to the customer's cart when they reach an order value threshold.
+{% endcomment %}
+
+{% if block.settings.enable_auto_add %}
+  {% assign target_variant = block.settings.gift_product.selected_or_first_available_variant %}
+  {% assign metafield_config = shop.metafields.custom_discounts.free_gift_config.value %}
+  <script>
+    (function() {
+      const rawMetafieldConfig = {{ metafield_config | json }};
+      
+      // Strict check: Only run if the backend metafield is present.
+      if (!rawMetafieldConfig || Object.keys(rawMetafieldConfig).length === 0) {
+        console.log('[Auto-Gift] No active free gift configured in the backend. Exiting.');
+        return;
+      }
+      
+      const hasSingleGift = !!rawMetafieldConfig.giftVariantId;
+      const hasMultiGifts = Array.isArray(rawMetafieldConfig.giftVariantIds) && rawMetafieldConfig.giftVariantIds.length > 0;
+      const hasTierGifts = Array.isArray(rawMetafieldConfig.tiers) && rawMetafieldConfig.tiers.length > 0;
+
+      if (!hasSingleGift && !hasMultiGifts && !hasTierGifts) {
+        console.warn('[Auto-Gift] No valid gift variants found in config. Exiting.');
+        return;
+      }
+
+      let CONFIG = {
+        configType: rawMetafieldConfig.configType || 'BASIC',
+        minSpend: 0,
+        minQuantity: 0,
+        giftVariantId: 0,
+        triggerProductId: 0,
+        giftVariantIds: [],
+        tiers: [],
+        startDate: null,
+        endDate: null,
+        propertyKey: '_custom_auto_gift'
+      };
+
+      // 1. Parse minimum spend
+      if (rawMetafieldConfig.minimumSpend) {
+        CONFIG.minSpend = rawMetafieldConfig.minimumSpend * 100;
+      }
+
+      // 1b. Parse minimum quantity (for mystery gift)
+      if (rawMetafieldConfig.minQuantity) {
+        CONFIG.minQuantity = parseInt(rawMetafieldConfig.minQuantity, 10);
+      }
+      
+      // 2. Parse Single Gift Variant
+      const variantIdMatch = (rawMetafieldConfig.giftVariantId || '').match(/ProductVariant\/(\d+)/);
+      if (variantIdMatch) {
+        CONFIG.giftVariantId = parseInt(variantIdMatch[1], 10);
+      } else if (rawMetafieldConfig.giftVariantId) {
+         CONFIG.giftVariantId = parseInt(rawMetafieldConfig.giftVariantId, 10);
+      }
+
+      // 3. Parse Trigger Product (Product Purchase)
+      const triggerMatch = (rawMetafieldConfig.triggerProductId || '').match(/Product\/(\d+)/);
+      if (triggerMatch) {
+        CONFIG.triggerProductId = parseInt(triggerMatch[1], 10);
+      } else if (rawMetafieldConfig.triggerProductId) {
+        CONFIG.triggerProductId = parseInt(rawMetafieldConfig.triggerProductId, 10);
+      }
+
+      // 4. Parse Multiple Gift Variants (Mystery, Multi-Choice)
+      if (Array.isArray(rawMetafieldConfig.giftVariantIds)) {
+        CONFIG.giftVariantIds = rawMetafieldConfig.giftVariantIds.map(id => {
+          const m = id.match(/ProductVariant\/(\d+)/);
+          return m ? parseInt(m[1], 10) : parseInt(id, 10);
+        }).filter(id => !isNaN(id));
+      }
+
+      // 5. Parse Tiers (Order Value Choice)
+      if (Array.isArray(rawMetafieldConfig.tiers)) {
+        CONFIG.tiers = rawMetafieldConfig.tiers.map(t => {
+          const m = (t.giftVariantId || '').match(/ProductVariant\/(\d+)/);
+          return {
+            minSpend: t.minimumSpend ? parseFloat(t.minimumSpend) * 100 : 0,
+            giftVariantId: m ? parseInt(m[1], 10) : parseInt(t.giftVariantId, 10)
+          };
+        }).sort((a, b) => b.minSpend - a.minSpend); // Highest spend first
+      }
+
+      // 6. Parse Dates (Time Limited)
+      if (rawMetafieldConfig.startDate) CONFIG.startDate = new Date(rawMetafieldConfig.startDate).getTime();
+      if (rawMetafieldConfig.endDate) CONFIG.endDate = new Date(rawMetafieldConfig.endDate).getTime();
+
+      console.log('[Auto-Gift] Block loaded. Config:', JSON.stringify(CONFIG));
+
+      let isProcessing = false;
+
+      // Prevent infinite reload loops
+      const RETRY_KEY = 'auto_gift_retries';
+      const RETRY_TS_KEY = 'auto_gift_retry_ts';
+      const MAX_RETRIES = 3;
+      const RETRY_WINDOW_MS = 10000; // 10 seconds
+
+      function getRetryCount() {
+        const ts = parseInt(sessionStorage.getItem(RETRY_TS_KEY) || '0');
+        if (Date.now() - ts > RETRY_WINDOW_MS) {
+          sessionStorage.setItem(RETRY_KEY, '0');
+          return 0;
+        }
+        return parseInt(sessionStorage.getItem(RETRY_KEY) || '0');
+      }
+
+      function incrementRetry() {
+        const count = getRetryCount() + 1;
+        sessionStorage.setItem(RETRY_KEY, String(count));
+        sessionStorage.setItem(RETRY_TS_KEY, String(Date.now()));
+        return count;
+      }
+
+      function resetRetries() {
+        sessionStorage.setItem(RETRY_KEY, '0');
+      }
+
+      async function evaluateCart() {
+        if (isProcessing) return;
+        if (getRetryCount() >= MAX_RETRIES) {
+          console.warn('[Auto-Gift] Max retries reached. Pausing to prevent loop.');
+          return;
+        }
+        
+        try {
+          isProcessing = true;
+          console.log('[Auto-Gift] Evaluating cart...');
+          const res = await fetch('/cart.js', { cache: 'no-store' });
+          const cart = await res.json();
+
+          let subtotalWithoutGift = 0;
+          let giftInCart = false;
+          let giftQty = 0;
+          let giftLineItemKey = null;
+          let triggerProductInCart = false;
+          let hasSubscriptionItems = false;
+          
+          // Identify if ANY of the possible gift variants are currently in the cart
+          const possibleGiftIds = new Set();
+          if (CONFIG.giftVariantId) possibleGiftIds.add(CONFIG.giftVariantId);
+          CONFIG.giftVariantIds.forEach(id => possibleGiftIds.add(id));
+          CONFIG.tiers.forEach(t => possibleGiftIds.add(t.giftVariantId));
+
+          cart.items.forEach(item => {
+            if (item.properties && item.properties[CONFIG.propertyKey] === 'true') {
+              giftInCart = true;
+              giftLineItemKey = item.key;
+              giftQty = item.quantity;
+            } else {
+              subtotalWithoutGift += item.original_line_price || item.line_price;
+              if (item.product_id === CONFIG.triggerProductId) {
+                triggerProductInCart = true;
+              }
+              if (item.selling_plan_allocation) {
+                hasSubscriptionItems = true;
+              }
+            }
+          });
+
+          let qualifies = false;
+          let targetGiftId = CONFIG.giftVariantId;
+
+          // Process Qualification & Select Gift ID based on ConfigType
+          switch (CONFIG.configType) {
+            case 'PRODUCT_PURCHASE':
+              qualifies = triggerProductInCart;
+              break;
+            case 'SUBSCRIPTION':
+              qualifies = hasSubscriptionItems;
+              break;
+            case 'SUBSCRIPTION_FIRST':
+              // Real enforcement is in the Shopify Function (numberOfOrders === 0).
+              // On the storefront we use localStorage to track if the gift was already given.
+              const subFirstKey = 'sub_first_gift_used';
+              const alreadyGiven = localStorage.getItem(subFirstKey) === 'true';
+              qualifies = hasSubscriptionItems && !alreadyGiven;
+              // Mark as given once the gift is added (done after the add call below)
+              if (qualifies && !giftInCart) {
+                localStorage.setItem(subFirstKey, 'true');
+              }
+              break;
+            case 'TIME_LIMITED':
+              const now = Date.now();
+              const started = !CONFIG.startDate || now >= CONFIG.startDate;
+              const ended = CONFIG.endDate && now > CONFIG.endDate;
+              qualifies = started && !ended && (subtotalWithoutGift >= CONFIG.minSpend);
+              break;
+            case 'MYSTERY':
+              // Quantity-based: count total non-gift items in cart
+              let totalItemCount = 0;
+              cart.items.forEach(item => {
+                if (!(item.properties && item.properties[CONFIG.propertyKey] === 'true')) {
+                  totalItemCount += item.quantity;
+                }
+              });
+              qualifies = CONFIG.minQuantity > 0 && totalItemCount >= CONFIG.minQuantity && CONFIG.giftVariantIds.length > 0;
+              if (qualifies && !giftInCart) {
+                 // Pick a random gift from the pool
+                 targetGiftId = CONFIG.giftVariantIds[Math.floor(Math.random() * CONFIG.giftVariantIds.length)];
+              }
+              break;
+            case 'MULTI_CHOICE': // For auto-add, multi-choice just gives one of the pool
+              qualifies = subtotalWithoutGift >= CONFIG.minSpend && CONFIG.minSpend > 0;
+              if (qualifies && !giftInCart && CONFIG.giftVariantIds.length > 0) {
+                 // Pick a random gift from the pool
+                 targetGiftId = CONFIG.giftVariantIds[Math.floor(Math.random() * CONFIG.giftVariantIds.length)];
+              }
+              break;
+            case 'ORDER_VALUE_CHOICE':
+              // Find highest qualified tier
+              const qualifiedTier = CONFIG.tiers.find(t => subtotalWithoutGift >= t.minSpend);
+              if (qualifiedTier) {
+                qualifies = true;
+                targetGiftId = qualifiedTier.giftVariantId;
+              }
+              break;
+            case 'BASIC':
+            case 'AUTO_ADD':
+            default:
+              qualifies = subtotalWithoutGift >= CONFIG.minSpend && CONFIG.minSpend > 0;
+              break;
+          }
+
+          const currencySymbol = '{{ cart.currency.symbol }}' || '$';
+          console.log(`[Auto-Gift] Type: ${CONFIG.configType} | Subtotal: ${currencySymbol}${(subtotalWithoutGift / 100).toFixed(2)} | Qualifies: ${qualifies} | In Cart: ${giftInCart}`);
+
+          // Sanity check target gift
+          if (qualifies && !giftInCart && (!targetGiftId || isNaN(targetGiftId))) {
+             console.warn('[Auto-Gift] Qualified, but no valid target gift ID to add.');
+             return;
+          }
+
+          if (qualifies && !giftInCart) {
+            console.log('[Auto-Gift] Adding gift variant: ' + targetGiftId);
+            const addRes = await fetch('/cart/add.js', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                items: [{
+                  id: targetGiftId,
+                  quantity: 1,
+                  properties: { 
+                      [CONFIG.propertyKey]: 'true',
+                      '_hidden': 'true'
+                  }
+                }]
+              })
+            });
+            
+            if (!addRes.ok) {
+              const errorText = await addRes.text();
+              console.error('[Auto-Gift] Failed to add gift:', addRes.status, errorText);
+              incrementRetry();
+              return; // Halt to prevent reload loop
+            }
+
+            const addData = await addRes.json();
+            console.log('[Auto-Gift] Add result:', addData.items ? 'Success' : addData);
+            resetRetries();
+            window.dispatchEvent(new Event('cart:updated'));
+            location.reload();
+          } else if (qualifies && giftInCart && giftQty > 1) {
+            console.log('[Auto-Gift] Locking gift quantity to 1');
+            const changeRes = await fetch('/cart/change.js', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                id: giftLineItemKey,
+                quantity: 1
+              })
+            });
+            
+            if (!changeRes.ok) {
+              const errorText = await changeRes.text();
+              console.error('[Auto-Gift] Failed to lock quantity:', changeRes.status, errorText);
+              incrementRetry();
+              return;
+            }
+            
+            resetRetries();
+            window.dispatchEvent(new Event('cart:updated'));
+            location.reload();
+          } else if (!qualifies && giftInCart && giftLineItemKey) {
+            console.log('[Auto-Gift] Does not qualify anymore. Removing gift.');
+            const changeRes = await fetch('/cart/change.js', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                id: giftLineItemKey,
+                quantity: 0
+              })
+            });
+            
+            if (!changeRes.ok) {
+              const errorText = await changeRes.text();
+              console.error('[Auto-Gift] Failed to remove gift:', changeRes.status, errorText);
+              incrementRetry();
+              return;
+            }
+            
+            resetRetries();
+            window.dispatchEvent(new Event('cart:updated'));
+            location.reload();
+          } else {
+            console.log('[Auto-Gift] No action needed.');
+          }
+        } catch (e) {
+          console.error('[Auto-Gift] Error:', e);
+        } finally {
+          isProcessing = false;
+        }
+      }
+
+      // Run on initial load
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', evaluateCart);
+      } else {
+        evaluateCart();
+      }
+
+      // Debounce logic to prevent rate-limiting (429 errors from Cloudflare)
+      let evaluateTimeout = null;
+      function debouncedEvaluateCart() {
+        if (evaluateTimeout) clearTimeout(evaluateTimeout);
+        evaluateTimeout = setTimeout(() => {
+          evaluateCart();
+        }, 1000); // Wait 1 second after last call to evaluate
+      }
+
+      // Intercept fetch to detect cart changes
+      const originalFetch = window.fetch;
+      window.fetch = async function() {
+        const response = await originalFetch.apply(this, arguments);
+        const urlReq = arguments[0];
+        const url = typeof urlReq === 'string' ? urlReq : (urlReq?.url || '');
+        if (url && url.includes('/cart') && !url.includes('/cart.js')) {
+          debouncedEvaluateCart();
+        }
+        return response;
+      };
+
+      // Intercept XHR for older themes
+      const originalXHR = window.XMLHttpRequest.prototype.send;
+      window.XMLHttpRequest.prototype.send = function() {
+        this.addEventListener('load', function() {
+          if (this.responseURL && this.responseURL.includes('/cart')) {
+            debouncedEvaluateCart();
+          }
+        });
+        return originalXHR.apply(this, arguments);
+      };
+    })();
+  </script>
+{% endif %}
+
+{% schema %}
+{
+  "name": "Auto-Add Free Gift",
+  "target": "body",
+  "settings": [
+    {
+      "type": "checkbox",
+      "id": "enable_auto_add",
+      "label": "Enable Auto-Add Gift",
+      "default": true
+    },
+    {
+      "type": "number",
+      "id": "minimum_spend_target",
+      "label": "Fallback Minimum Spend",
+      "default": 500,
+      "info": "This value is only used if the app's configuration cannot be loaded automatically."
+    },
+    {
+      "type": "product",
+      "id": "gift_product",
+      "label": "Fallback Gift Product",
+      "info": "This value is only used if the app's configuration cannot be loaded automatically."
+    }
+  ]
+}
+{% endschema %}

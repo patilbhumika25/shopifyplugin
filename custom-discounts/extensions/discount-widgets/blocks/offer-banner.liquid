@@ -1,0 +1,128 @@
+{% comment %}
+  Offer Banner — A promotional banner that merchants can add to any page.
+  Supports custom text, background color, and optional countdown styling.
+{% endcomment %}
+
+{% assign banner_text = block.settings.banner_text | default: '🎉 Buy 2, Get 1 Free — Limited Time!' %}
+{% assign banner_bg = block.settings.banner_bg_color | default: '#1A1A2E' %}
+{% assign banner_text_color = block.settings.banner_text_color | default: '#FFFFFF' %}
+{% assign banner_accent = block.settings.banner_accent_color | default: '#E94560' %}
+
+<div class="offer-banner" style="
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: linear-gradient(135deg, {{ banner_bg }} 0%, {{ banner_bg }}ee 100%);
+  color: {{ banner_text_color }};
+  text-align: center;
+  padding: 14px 24px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  position: relative;
+  overflow: hidden;
+  border-bottom: 3px solid {{ banner_accent }};
+">
+  <!-- Animated shimmer effect -->
+  <div style="
+    position: absolute;
+    top: 0; left: -100%;
+    width: 200%;
+    height: 100%;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      {{ banner_accent }}11 25%,
+      {{ banner_accent }}22 50%,
+      {{ banner_accent }}11 75%,
+      transparent 100%
+    );
+    animation: banner-shimmer 3s infinite linear;
+  "></div>
+
+  <span style="position: relative; z-index: 1;">
+    {{ banner_text }}
+  </span>
+
+  {% if block.settings.show_cta %}
+    <a href="{{ block.settings.cta_link | default: '/collections/all' }}" style="
+      display: inline-block;
+      margin-left: 16px;
+      padding: 6px 18px;
+      background: {{ banner_accent }};
+      color: {{ banner_text_color }};
+      text-decoration: none;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      position: relative;
+      z-index: 1;
+      transition: transform 0.2s;
+    "
+    onmouseover="this.style.transform='scale(1.05)'"
+    onmouseout="this.style.transform='scale(1)'"
+    >
+      {{ block.settings.cta_text | default: 'Shop Now' }}
+    </a>
+  {% endif %}
+</div>
+
+<style>
+  @keyframes banner-shimmer {
+    0% { transform: translateX(-50%); }
+    100% { transform: translateX(50%); }
+  }
+</style>
+
+{% schema %}
+{
+  "name": "Offer Banner",
+  "target": "section",
+  "enabled_on": {
+    "templates": ["*"]
+  },
+  "settings": [
+    {
+      "type": "text",
+      "id": "banner_text",
+      "label": "Banner message",
+      "default": "🎉 Buy 2, Get 1 Free — Limited Time!"
+    },
+    {
+      "type": "color",
+      "id": "banner_bg_color",
+      "label": "Background color",
+      "default": "#1A1A2E"
+    },
+    {
+      "type": "color",
+      "id": "banner_text_color",
+      "label": "Text color",
+      "default": "#FFFFFF"
+    },
+    {
+      "type": "color",
+      "id": "banner_accent_color",
+      "label": "Accent/CTA color",
+      "default": "#E94560"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_cta",
+      "label": "Show call-to-action button",
+      "default": true
+    },
+    {
+      "type": "text",
+      "id": "cta_text",
+      "label": "CTA button text",
+      "default": "Shop Now"
+    },
+    {
+      "type": "url",
+      "id": "cta_link",
+      "label": "CTA link"
+    }
+  ]
+}
+{% endschema %}

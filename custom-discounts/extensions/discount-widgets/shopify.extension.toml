@@ -1,0 +1,56 @@
+api_version = "2025-04"
+
+[[extensions]]
+name = "Discount Storefront Widgets"
+handle = "discount-widgets"
+
+uid = "ad5168e6-b523-078c-66e5-be6ac50964ddaf5f4359"
+
+type = "theme"
+
+[extensions.settings]
+
+  [[extensions.settings.fields]]
+  key = "show_progress_bar"
+  type = "checkbox"
+  label = "Show cart progress bar"
+
+  [[extensions.settings.fields]]
+  key = "progress_bar_color"
+  type = "color"
+  label = "Progress bar color"
+  default = "#4CAF50"
+
+  [[extensions.settings.fields]]
+  key = "show_discount_badge"
+  type = "checkbox"
+  label = "Show discount badge on products"
+
+  [[extensions.settings.fields]]
+  key = "badge_text"
+  type = "single_line_text_field"
+  label = "Badge text"
+  default = "DEAL"
+
+  [[extensions.settings.fields]]
+  key = "badge_color"
+  type = "color"
+  label = "Badge color"
+  default = "#FF5722"
+
+  [[extensions.settings.fields]]
+  key = "show_offer_banner"
+  type = "checkbox"
+  label = "Show promotional offer banner"
+
+  [[extensions.settings.fields]]
+  key = "banner_text"
+  type = "single_line_text_field"
+  label = "Banner message"
+  default = "🎉 Buy 2, Get 1 Free — Limited Time!"
+
+  [[extensions.settings.fields]]
+  key = "banner_bg_color"
+  type = "color"
+  label = "Banner background color"
+  default = "#1A1A2E"

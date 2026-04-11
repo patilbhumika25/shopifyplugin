@@ -1,0 +1,41 @@
+query RunInput {
+  cart {
+    cost {
+      subtotalAmount {
+        amount
+      }
+    }
+    buyerIdentity {
+      customer {
+        numberOfOrders
+      }
+    }
+    lines {
+      quantity
+      merchandise {
+        __typename
+        ...on ProductVariant {
+          id
+          product {
+            id
+          }
+        }
+      }
+      cost {
+        amountPerQuantity {
+          amount
+        }
+      }
+      sellingPlanAllocation {
+        sellingPlan {
+          id
+        }
+      }
+    }
+  }
+  discountNode {
+    metafield(namespace: "$app:free-gift-discount", key: "function-configuration") {
+      value
+    }
+  }
+}

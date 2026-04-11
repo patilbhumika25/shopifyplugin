@@ -1,0 +1,41 @@
+{
+  "cart": {
+    "lines": [
+      {
+        "quantity": 2,
+        "merchandise": {
+          "__typename": "ProductVariant",
+          "id": "gid://shopify/ProductVariant/51001769591076",
+          "product": {
+            "id": "gid://shopify/Product/10159392293156"
+          }
+        },
+        "cost": {
+          "amountPerQuantity": {
+            "amount": "749.95"
+          }
+        }
+      },
+      {
+        "quantity": 1,
+        "merchandise": {
+          "__typename": "ProductVariant",
+          "id": "gid://shopify/ProductVariant/51001769558308",
+          "product": {
+            "id": "gid://shopify/Product/10159392522532"
+          }
+        },
+        "cost": {
+          "amountPerQuantity": {
+            "amount": "600.00"
+          }
+        }
+      }
+    ]
+  },
+  "discountNode": {
+    "metafield": {
+      "value": "{\"configType\":\"MULTI_TIER\",\"tiers\":[{\"buyQuantity\":2,\"getQuantity\":1,\"discountPercentage\":100},{\"buyQuantity\":4,\"getQuantity\":2,\"discountPercentage\":100}]}"
+    }
+  }
+}

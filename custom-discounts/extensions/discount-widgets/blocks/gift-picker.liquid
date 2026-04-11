@@ -1,0 +1,121 @@
+{% comment %}Gift Picker Widget — ORDER_VALUE_PICK_ONE. Auto-reads gift products from offer config. No Theme Customizer product setup needed.{% endcomment %}
+{% if block.settings.enabled %}
+{% assign metafield_config = shop.metafields.custom_discounts.free_gift_config.value %}
+<style>
+#gp-panel{position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#fff;border-top:3px solid #6c47ff;box-shadow:0 -8px 40px rgba(0,0,0,.18);padding:20px 24px 24px;transform:translateY(110%);transition:transform .42s cubic-bezier(.22,1,.36,1);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+#gp-panel.gp-open{transform:translateY(0)}
+#gp-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+#gp-title{font-size:16px;font-weight:700;color:#1a1a2e;display:flex;align-items:center;gap:8px}
+.gp-badge{background:#6c47ff;color:#fff;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px}
+#gp-sub{font-size:13px;color:#6b7280;margin-bottom:14px}
+#gp-close{background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;padding:0 4px}
+#gp-close:hover{color:#374151}
+#gp-prog-wrap{height:5px;background:#e5e7eb;border-radius:10px;margin-bottom:14px;overflow:hidden}
+#gp-prog{height:100%;background:linear-gradient(90deg,#6c47ff,#a78bfa);border-radius:10px;transition:width .5s}
+#gp-options{display:flex;gap:12px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}
+#gp-options::-webkit-scrollbar{display:none}
+.gp-card{flex:0 0 155px;border:2px solid #e5e7eb;border-radius:14px;padding:12px;text-align:center;cursor:pointer;transition:border-color .2s,box-shadow .2s,transform .18s;background:#f9fafb;position:relative}
+.gp-card:hover{border-color:#6c47ff;box-shadow:0 4px 16px rgba(108,71,255,.14);transform:translateY(-2px)}
+.gp-card.gp-sel{border-color:#6c47ff;background:#f0ebff}
+.gp-card img{width:76px;height:76px;object-fit:cover;border-radius:10px;margin-bottom:8px;display:block;margin-left:auto;margin-right:auto}
+.gp-card-ph{width:76px;height:76px;border-radius:10px;background:#e5e7eb;display:flex;align-items:center;justify-content:center;font-size:26px;margin:0 auto 8px}
+.gp-card-name{font-size:11px;font-weight:600;color:#374151;line-height:1.3;margin-bottom:8px;min-height:28px}
+.gp-btn{width:100%;background:#6c47ff;color:#fff;border:none;border-radius:8px;padding:6px;font-size:12px;font-weight:600;cursor:pointer;transition:background .2s}
+.gp-btn:hover{background:#5438d4}
+.gp-btn.gp-selected{background:#16a34a}
+.gp-check{position:absolute;top:-8px;right:-8px;background:#16a34a;color:#fff;border-radius:50%;width:20px;height:20px;display:none;align-items:center;justify-content:center;font-size:12px}
+.gp-card.gp-sel .gp-check{display:flex}
+#gp-trig{position:fixed;bottom:20px;right:20px;background:linear-gradient(135deg,#6c47ff,#a78bfa);color:#fff;border:none;border-radius:50px;padding:11px 18px;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 6px 24px rgba(108,71,255,.4);display:none;align-items:center;gap:6px;z-index:9998}
+@media(min-width:768px){#gp-panel{max-width:680px;left:50%;right:auto;transform:translateX(-50%) translateY(110%);border-radius:18px 18px 0 0}#gp-panel.gp-open{transform:translateX(-50%) translateY(0)}#gp-trig{bottom:28px;right:28px}}
+</style>
+<button id="gp-trig">🎁 Choose Your Free Gift</button>
+<div id="gp-panel">
+  <div id="gp-head">
+    <div id="gp-title">🎁 {{ block.settings.heading | escape }}<span class="gp-badge">FREE</span></div>
+    <button id="gp-close">&#x2715;</button>
+  </div>
+  <div id="gp-sub">{{ block.settings.subtitle | escape }}</div>
+  <div id="gp-prog-wrap"><div id="gp-prog" style="width:0%"></div></div>
+  <div id="gp-options"></div>
+</div>
+<script>
+(function(){
+  var cfg={{ metafield_config | json }};
+  if(!cfg||cfg.configType!=='ORDER_VALUE_PICK_ONE')return;
+  if(!cfg.minimumSpend||!cfg.giftVariantIds||!cfg.giftVariantIds.length)return;
+  var giftOpts=cfg.giftOptions||[];
+  var panel=document.getElementById('gp-panel'),trig=document.getElementById('gp-trig'),closeBtn=document.getElementById('gp-close');
+  var prog=document.getElementById('gp-prog'),sub=document.getElementById('gp-sub'),optCont=document.getElementById('gp-options');
+  var MIN=cfg.minimumSpend*100,busy=false,seen=false,qualifies=false;
+  var CUR='{{ cart.currency.symbol }}',PROP='_custom_auto_gift';
+
+  // Build gift cards from enriched giftOptions
+  function buildCards(){
+    if(!giftOpts.length){
+      // Fallback: show placeholders from raw IDs
+      cfg.giftVariantIds.forEach(function(id){
+        var num=id.replace('gid://shopify/ProductVariant/','');
+        optCont.innerHTML+='<div class="gp-card" data-variant-id="'+num+'"><div class="gp-check">✓</div><div class="gp-card-ph">🎁</div><div class="gp-card-name">Gift Option</div><button class="gp-btn">Select</button></div>';
+      });
+    } else {
+      giftOpts.forEach(function(opt){
+        var img=opt.imageUrl?'<img src="'+opt.imageUrl+'" alt="'+opt.title+'" loading="lazy">':'<div class="gp-card-ph">🎁</div>';
+        var name=opt.title+(opt.variantTitle?' — '+opt.variantTitle:'');
+        optCont.innerHTML+='<div class="gp-card" data-variant-id="'+opt.numericId+'"><div class="gp-check">✓</div>'+img+'<div class="gp-card-name">'+name+'</div><button class="gp-btn">Select</button></div>';
+      });
+    }
+    // Attach click handlers
+    document.querySelectorAll('.gp-card').forEach(function(card){
+      card.querySelector('.gp-btn').addEventListener('click',function(){
+        if(busy)return;busy=true;var vid=parseInt(card.dataset.variantId);this.textContent='...';
+        fetch('/cart.js',{cache:'no-store'}).then(function(r){return r.json()}).then(function(cart){
+          var ex=cart.items.find(function(i){return i.properties&&i.properties[PROP]==='true'});
+          var ops=[];
+          if(ex&&ex.variant_id!==vid)ops.push(fetch('/cart/change.js',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:ex.key,quantity:0})}));
+          if(!ex||ex.variant_id!==vid)ops.push(fetch('/cart/add.js',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({items:[{id:vid,quantity:1,properties:{[PROP]:'true','_hidden':'true'}}]})}));
+          return Promise.all(ops);
+        }).then(function(){setSel(vid);busy=false;window.dispatchEvent(new Event('cart:updated'));setTimeout(function(){location.reload()},500)}).catch(function(){busy=false});
+      });
+    });
+  }
+
+  function open(){panel.classList.add('gp-open');trig.style.display='none';seen=true}
+  function hide(){panel.classList.remove('gp-open')}
+  closeBtn.onclick=function(){hide();if(qualifies)trig.style.display='flex'};
+  trig.onclick=open;
+
+  function setSel(vid){
+    document.querySelectorAll('.gp-card').forEach(function(c){
+      var s=parseInt(c.dataset.variantId)===vid;
+      c.classList.toggle('gp-sel',s);
+      var b=c.querySelector('.gp-btn');b.textContent=s?'✓ Selected':'Select';b.className='gp-btn'+(s?' gp-selected':'');
+    });
+  }
+
+  async function evalCart(){
+    var r=await fetch('/cart.js',{cache:'no-store'}),cart=await r.json(),sub2=0,gift=null;
+    cart.items.forEach(function(i){if(i.properties&&i.properties[PROP]==='true'){gift=i}else{sub2+=i.original_line_price||i.line_price}});
+    qualifies=sub2>=MIN;prog.style.width=Math.min(100,Math.round(sub2/MIN*100))+'%';
+    sub.textContent=qualifies?(gift?'✓ Gift in cart!':'🎉 Pick your free gift below!'):'Spend '+CUR+((MIN-sub2)/100).toFixed(2)+' more to unlock';
+    if(gift&&gift.variant_id)setSel(gift.variant_id);
+    if(!qualifies){hide();trig.style.display='none';if(gift)fetch('/cart/change.js',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:gift.key,quantity:0})}).then(function(){location.reload()});return}
+    if(!seen){open()}else{trig.style.display='flex'}
+  }
+  var t;function deb(){clearTimeout(t);t=setTimeout(evalCart,900)}
+  buildCards();
+  if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',evalCart)}else{evalCart()}
+  var _f=window.fetch;window.fetch=async function(){var res=await _f.apply(this,arguments);var u=typeof arguments[0]==='string'?arguments[0]:(arguments[0]?.url||'');if(u.includes('/cart')&&!u.includes('/cart.js'))deb();return res};
+})();
+</script>
+{% endif %}
+{% schema %}
+{
+  "name": "Gift Picker Widget",
+  "target": "body",
+  "settings": [
+    {"type":"checkbox","id":"enabled","label":"Enable Gift Picker","default":true},
+    {"type":"text","id":"heading","label":"Heading","default":"Choose Your Free Gift!"},
+    {"type":"text","id":"subtitle","label":"Subtitle","default":"You've earned a free gift — pick one below:"}
+  ]
+}
+{% endschema %}

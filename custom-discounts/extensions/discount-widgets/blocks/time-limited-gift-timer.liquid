@@ -1,0 +1,119 @@
+{% comment %}Time-Limited Gift Timer Widget — TIME_LIMITED. Sticky countdown banner with CTA.{% endcomment %}
+{% if block.settings.enabled %}
+{% assign metafield_config = shop.metafields.custom_discounts.free_gift_config.value %}
+<style>
+#tg-bar{position:fixed;top:0;left:0;right:0;z-index:9990;background:linear-gradient(135deg,#1a1a2e,#16213e,#0f3460);color:#fff;padding:0 16px;box-shadow:0 4px 24px rgba(0,0,0,.4);transform:translateY(-110%);transition:transform .45s cubic-bezier(.22,1,.36,1);display:none;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+#tg-bar.show{transform:translateY(0)}
+#tg-in{max-width:1200px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;padding:10px 0}
+#tg-left{display:flex;align-items:center;gap:10px;flex:1 1 auto;min-width:0}
+#tg-fire{font-size:20px;animation:tg-b 1s infinite alternate;flex-shrink:0}
+@keyframes tg-b{from{transform:translateY(0)}to{transform:translateY(-4px)}}
+#tg-ttl{font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#tg-sub{font-size:11px;color:#a5b4fc;margin-top:1px}
+#tg-clk{display:flex;align-items:center;gap:5px;flex-shrink:0}
+.tg-u{display:flex;flex-direction:column;align-items:center}
+.tg-d{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.18);border-radius:7px;font-size:19px;font-weight:800;width:42px;text-align:center;padding:3px 2px;font-variant-numeric:tabular-nums;transition:background .3s}
+.tg-d.urg{background:rgba(239,68,68,.35);border-color:rgba(239,68,68,.6);animation:tg-f 1s infinite}
+@keyframes tg-f{0%,100%{opacity:1}50%{opacity:.65}}
+.tg-l{font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:#93c5fd;margin-top:2px}
+.tg-sep{font-size:20px;font-weight:800;color:#a5b4fc;padding-bottom:12px}
+#tg-exp{display:none;font-size:12px;color:#fca5a5;font-weight:600}
+#tg-right{display:flex;align-items:center;gap:12px;flex-shrink:0}
+#tg-pw{display:flex;flex-direction:column;gap:4px;min-width:110px}
+#tg-pt{height:5px;background:rgba(255,255,255,.15);border-radius:10px;overflow:hidden;width:110px}
+#tg-pf{height:100%;background:linear-gradient(90deg,#818cf8,#38bdf8);border-radius:10px;transition:width .5s}
+#tg-pl{font-size:11px;color:#bfdbfe}
+#tg-cta{background:linear-gradient(135deg,#818cf8,#6366f1);color:#fff;border:none;border-radius:9px;padding:8px 16px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;transition:transform .15s;box-shadow:0 3px 12px rgba(99,102,241,.5);flex-shrink:0}
+#tg-cta:hover:not(:disabled){transform:scale(1.05)}
+#tg-cta:disabled{opacity:.55;cursor:default}
+#tg-cta.gifted{background:linear-gradient(135deg,#22c55e,#16a34a)}
+#tg-cls{background:none;border:none;color:rgba(255,255,255,.5);font-size:17px;cursor:pointer;padding:2px 5px;flex-shrink:0}
+#tg-cls:hover{color:#fff}
+body.tg-on{padding-top:60px}
+@media(max-width:600px){#tg-right{display:none}.tg-d{font-size:16px;width:34px}body.tg-on{padding-top:52px}}
+</style>
+<div id="tg-bar">
+  <div id="tg-in">
+    <div id="tg-left"><div id="tg-fire">🔥</div><div><div id="tg-ttl">{{ block.settings.offer_label | escape }}</div><div id="tg-sub"></div></div></div>
+    <div id="tg-clk">
+      <div class="tg-u"><div class="tg-d" id="tg-D">00</div><div class="tg-l">Days</div></div>
+      <div class="tg-sep">:</div>
+      <div class="tg-u"><div class="tg-d" id="tg-H">00</div><div class="tg-l">Hrs</div></div>
+      <div class="tg-sep">:</div>
+      <div class="tg-u"><div class="tg-d" id="tg-M">00</div><div class="tg-l">Min</div></div>
+      <div class="tg-sep">:</div>
+      <div class="tg-u"><div class="tg-d" id="tg-S">00</div><div class="tg-l">Sec</div></div>
+      <div id="tg-exp">Offer Ended</div>
+    </div>
+    <div id="tg-right">
+      <div id="tg-pw"><div id="tg-pt"><div id="tg-pf" style="width:0%"></div></div><div id="tg-pl">Loading…</div></div>
+      <button id="tg-cta" disabled>Get Gift</button>
+    </div>
+    <button id="tg-cls">&#x2715;</button>
+  </div>
+</div>
+<script>
+(function(){
+  var cfg={{ metafield_config | json }};
+  if(!cfg||cfg.configType!=='TIME_LIMITED')return;
+  if(!cfg.giftVariantId||!cfg.minimumSpend)return;
+  var END=cfg.endDate?new Date(cfg.endDate):null,START=cfg.startDate?new Date(cfg.startDate):null;
+  var MIN=cfg.minimumSpend*100,PROP='_custom_auto_gift',CUR='{{ cart.currency.symbol }}';
+  var m=(cfg.giftVariantId||'').match(/ProductVariant\/(\d+)/);
+  var GID=m?parseInt(m[1]):parseInt(cfg.giftVariantId);
+  if(!GID||isNaN(GID))return;
+  var bar=document.getElementById('tg-bar'),D=document.getElementById('tg-D'),H=document.getElementById('tg-H'),M=document.getElementById('tg-M'),S=document.getElementById('tg-S');
+  var exp=document.getElementById('tg-exp'),pf=document.getElementById('tg-pf'),pl=document.getElementById('tg-pl'),cta=document.getElementById('tg-cta'),cls=document.getElementById('tg-cls'),sub=document.getElementById('tg-sub');
+  var dismissed=false,busy=false,qualifies=false,inCart=false,lineKey=null,expired=false;
+  function pad(n){return String(Math.max(0,n)).padStart(2,'0')}
+  cls.onclick=function(){dismissed=true;bar.classList.remove('show');document.body.classList.remove('tg-on');setTimeout(function(){bar.style.display='none'},500)};
+  function showBar(){if(dismissed)return;bar.style.display='block';requestAnimationFrame(function(){requestAnimationFrame(function(){bar.classList.add('show');document.body.classList.add('tg-on')})})};
+  function tick(){
+    if(!END){[D,H,M,S].forEach(function(e){e.textContent='--'});return false}
+    var diff=END-Date.now();
+    if(diff<=0){[D,H,M,S].forEach(function(e){e.textContent='00';e.classList.add('urg')});exp.style.display='block';return true}
+    var tot=Math.floor(diff/1000);D.textContent=pad(Math.floor(tot/86400));H.textContent=pad(Math.floor(tot%86400/3600));M.textContent=pad(Math.floor(tot%3600/60));S.textContent=pad(tot%60);
+    var u=tot<3600;[D,H,M,S].forEach(function(e){e.classList.toggle('urg',u)});return false;
+  }
+  function updCTA(){
+    if(expired){cta.disabled=true;cta.textContent='⏰ Offer Ended';cta.classList.remove('gifted');return}
+    if(inCart){cta.disabled=true;cta.textContent='✓ Gift in Cart!';cta.classList.add('gifted')}
+    else if(qualifies){cta.disabled=false;cta.textContent='🎁 Add Free Gift';cta.classList.remove('gifted')}
+    else{cta.disabled=true;cta.textContent='Spend '+CUR+cfg.minimumSpend+'+ to unlock';cta.classList.remove('gifted')}
+  }
+  cta.addEventListener('click',async function(){
+    if(busy||!qualifies||inCart)return;busy=true;cta.disabled=true;cta.textContent='…';
+    try{var r=await fetch('/cart/add.js',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({items:[{id:GID,quantity:1,properties:{[PROP]:'true','_hidden':'true'}}]})});if(r.ok){window.dispatchEvent(new Event('cart:updated'));setTimeout(function(){location.reload()},400)}else{busy=false;updCTA()}}catch(e){busy=false;updCTA()}
+  });
+  async function evalCart(){
+    try{
+      var r=await fetch('/cart.js',{cache:'no-store'}),cart=await r.json();
+      var tot=0;inCart=false;lineKey=null;
+      cart.items.forEach(function(i){if(i.properties&&i.properties[PROP]==='true'&&i.variant_id===GID){inCart=true;lineKey=i.key}else{tot+=i.original_line_price||i.line_price}});
+      qualifies=tot>=MIN;pf.style.width=Math.min(100,Math.round(tot/MIN*100))+'%';
+      sub.textContent='Free gift with '+CUR+cfg.minimumSpend+'+ order';
+      pl.textContent=qualifies?(inCart?'✓ Gift unlocked!':'🎉 Gift unlocked — add it!'):CUR+((MIN-tot)/100).toFixed(2)+' more for free gift';
+      updCTA();
+      if(lineKey&&(expired||!qualifies)){fetch('/cart/change.js',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:lineKey,quantity:0})}).then(function(){location.reload()})}
+    }catch(e){console.error(e)}
+  }
+  function init(){
+    var now=Date.now();var started=!START||now>=START.getTime();expired=END?now>END.getTime():false;
+    if(!started)return;showBar();expired=tick();evalCart();setInterval(function(){var wasExp=expired;expired=tick();if(expired&&!wasExp)updCTA()},1000);
+  }
+  var t;function deb(){clearTimeout(t);t=setTimeout(evalCart,900)}
+  if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',init)}else{init()}
+  var _f=window.fetch;window.fetch=async function(){var res=await _f.apply(this,arguments);var u=typeof arguments[0]==='string'?arguments[0]:(arguments[0]?.url||'');if(u.includes('/cart')&&!u.includes('/cart.js'))deb();return res};
+})();
+</script>
+{% endif %}
+{% schema %}
+{
+  "name": "Time-Limited Gift Timer",
+  "target": "body",
+  "settings": [
+    {"type":"checkbox","id":"enabled","label":"Enable Countdown Timer Banner","default":true},
+    {"type":"text","id":"offer_label","label":"Offer Label","default":"⚡ Limited-Time Free Gift — Don't Miss Out!"}
+  ]
+}
+{% endschema %}

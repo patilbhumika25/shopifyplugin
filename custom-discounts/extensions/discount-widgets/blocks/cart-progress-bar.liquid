@@ -1,0 +1,166 @@
+{% comment %}
+  Cart Progress Bar — Shows how close the customer is to unlocking a discount.
+  Merchant can set target amount via block settings.
+  Now includes JS for dynamic AJAX cart updates.
+{% endcomment %}
+
+{% assign target_amount = block.settings.target_amount | default: 500 %}
+{% assign progress_color = block.settings.progress_bar_color | default: '#4CAF50' %}
+
+{% assign cart_total = cart.total_price | divided_by: 100.0 %}
+{% assign remaining = target_amount | minus: cart_total %}
+{% if remaining < 0 %}{% assign remaining = 0 %}{% endif %}
+
+{% assign progress_pct = cart_total | divided_by: target_amount | times: 100 %}
+{% if progress_pct > 100 %}{% assign progress_pct = 100 %}{% endif %}
+
+<div class="discount-progress-bar" id="discount-progress-bar" style="
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  padding: 16px 20px;
+  margin: 12px 0;
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+">
+  {% if progress_pct >= 100 %}
+    <p id="progress-message" style="
+      margin: 0 0 10px;
+      font-weight: 700;
+      font-size: 14px;
+      color: {{ progress_color }};
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    ">
+      <span style="font-size: 18px;">🎉</span> Discount Unlocked!
+    </p>
+  {% else %}
+    <p id="progress-message" style="
+      margin: 0 0 10px;
+      font-weight: 600;
+      font-size: 13px;
+      color: #333;
+    ">
+      Add <strong style="color: {{ progress_color }};" id="progress-remaining">₹{{ remaining | round: 0 }}</strong> more to unlock your discount!
+    </p>
+  {% endif %}
+
+  <div style="
+    width: 100%;
+    height: 10px;
+    background: #dee2e6;
+    border-radius: 99px;
+    overflow: hidden;
+  ">
+    <div id="progress-fill" style="
+      width: {{ progress_pct }}%;
+      height: 100%;
+      background: linear-gradient(90deg, {{ progress_color }}, {{ progress_color }}dd);
+      border-radius: 99px;
+      transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    "></div>
+  </div>
+</div>
+
+<script>
+  (function() {
+    const TARGET = {{ target_amount }};
+    const COLOR = '{{ progress_color }}';
+
+    function updateProgressBar(cartTotalCents) {
+      const cartTotal = cartTotalCents / 100;
+      const remaining = Math.max(0, TARGET - cartTotal);
+      const pct = Math.min(100, (cartTotal / TARGET) * 100);
+
+      const fill = document.getElementById('progress-fill');
+      const msg = document.getElementById('progress-message');
+      const rem = document.getElementById('progress-remaining');
+
+      if (!fill || !msg) return;
+
+      fill.style.width = pct + '%';
+
+      if (pct >= 100) {
+        msg.innerHTML = '<span style="font-size: 18px;">🎉</span> Discount Unlocked!';
+        msg.style.fontWeight = '700';
+        msg.style.fontSize = '14px';
+        msg.style.color = COLOR;
+        msg.style.display = 'flex';
+        msg.style.alignItems = 'center';
+        msg.style.gap = '6px';
+      } else {
+        msg.innerHTML = 'Add <strong style="color: ' + COLOR + ';" id="progress-remaining">₹' + Math.round(remaining) + '</strong> more to unlock your discount!';
+        msg.style.fontWeight = '600';
+        msg.style.fontSize = '13px';
+        msg.style.color = '#333';
+        msg.style.display = 'block';
+      }
+    }
+
+    // Re-evaluate after any cart change via fetch/XHR
+    async function refreshFromCart() {
+      try {
+        const res = await fetch('/cart.js', { cache: 'no-store' });
+        const cart = await res.json();
+        updateProgressBar(cart.total_price);
+      } catch (e) {
+        // Silently fail — server-rendered fallback is still visible
+      }
+    }
+
+    // Intercept fetch for AJAX cart changes
+    const originalFetch = window.fetch;
+    window.fetch = async function() {
+      const response = await originalFetch.apply(this, arguments);
+      const url = arguments[0];
+      if (typeof url === 'string' && url.includes('/cart') && !url.includes('/cart.js')) {
+        setTimeout(refreshFromCart, 300);
+      }
+      return response;
+    };
+
+    // Intercept XHR for older themes
+    const originalXHR = window.XMLHttpRequest.prototype.send;
+    window.XMLHttpRequest.prototype.send = function() {
+      this.addEventListener('load', function() {
+        if (this.responseURL && this.responseURL.includes('/cart')) {
+          setTimeout(refreshFromCart, 300);
+        }
+      });
+      return originalXHR.apply(this, arguments);
+    };
+
+    // Listen for custom cart events
+    window.addEventListener('cart:updated', refreshFromCart);
+  })();
+</script>
+
+{% schema %}
+{
+  "name": "Cart Progress Bar",
+  "target": "section",
+  "enabled_on": {
+    "templates": ["cart", "index", "product"]
+  },
+  "settings": [
+    {
+      "type": "number",
+      "id": "target_amount",
+      "label": "Target cart amount (₹)",
+      "default": 500
+    },
+    {
+      "type": "color",
+      "id": "progress_bar_color",
+      "label": "Progress bar color",
+      "default": "#4CAF50"
+    },
+    {
+      "type": "text",
+      "id": "bar_message",
+      "label": "Progress message",
+      "default": "Add more to unlock FREE shipping!"
+    }
+  ]
+}
+{% endschema %}

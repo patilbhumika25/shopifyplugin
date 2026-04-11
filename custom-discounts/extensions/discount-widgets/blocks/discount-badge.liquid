@@ -1,0 +1,65 @@
+{% comment %}
+  Discount Badge — Overlays a badge on product cards to highlight active deals.
+  Merchant can customize badge text and colors.
+{% endcomment %}
+
+{% assign badge_text = block.settings.badge_text | default: 'DEAL' %}
+{% assign badge_bg = block.settings.badge_color | default: '#FF5722' %}
+{% assign badge_text_color = block.settings.badge_text_color | default: '#FFFFFF' %}
+
+<div class="discount-badge" style="
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  background: {{ badge_bg }};
+  color: {{ badge_text_color }};
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  border-radius: 6px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  box-shadow: 0 2px 6px {{ badge_bg }}44;
+  animation: badge-pulse 2s infinite;
+">
+  <span style="font-size: 12px;">🏷️</span>
+  {{ badge_text }}
+</div>
+
+<style>
+  @keyframes badge-pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+  }
+</style>
+
+{% schema %}
+{
+  "name": "Discount Badge",
+  "target": "section",
+  "enabled_on": {
+    "templates": ["product", "collection"]
+  },
+  "settings": [
+    {
+      "type": "text",
+      "id": "badge_text",
+      "label": "Badge text",
+      "default": "DEAL"
+    },
+    {
+      "type": "color",
+      "id": "badge_color",
+      "label": "Badge background color",
+      "default": "#FF5722"
+    },
+    {
+      "type": "color",
+      "id": "badge_text_color",
+      "label": "Badge text color",
+      "default": "#FFFFFF"
+    }
+  ]
+}
+{% endschema %}
