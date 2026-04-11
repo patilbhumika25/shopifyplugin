@@ -7,8 +7,8 @@ const BOGO_SUB_TYPES = [
     { label: 'Cheapest Item Free', value: 'CHEAPEST_FREE' },
     { label: 'Buy X, Get Different Product Y', value: 'DIFFERENT_PRODUCT' },
     { label: 'Multi-Tier BOGO', value: 'MULTI_TIER' },
-    { label: 'Mix & Match (Multiple Products)', value: 'MIX_MATCH' },
-    { label: 'Mix & Match BOGO (Cross-Collection)', value: 'MIX_MATCH_BOGO' },
+    { label: 'Mix & Match (Same Collection/Group)', value: 'MIX_MATCH' },
+    { label: 'Mix & Match (Buy from Collection A, Get Collection B)', value: 'MIX_MATCH_BOGO' },
     { label: 'Quantity-Limited BOGO', value: 'QUANTITY_LIMITED' },
     { label: 'Variant / Product Scoped BOGO', value: 'VARIANT_SCOPED' },
     { label: 'BOGO on Specific Variants / Collections', value: 'COLLECTION_VARIANT_SCOPED' },
@@ -138,6 +138,7 @@ const BogoForm = forwardRef<BogoFormHandle, { initialConfig?: any }>(({ initialC
                     ...base,
                     buyVariantIds: buyVariantIdsList,
                     getVariantId: getVariantIdList[0] || '',
+                    getVariantIds: getVariantIdList,
                     buyQuantity: parseInt(buyQty, 10),
                     discountType: discountType,
                     discountValue: parseInt(discountValue, 10),
@@ -282,12 +283,12 @@ const BogoForm = forwardRef<BogoFormHandle, { initialConfig?: any }>(({ initialC
                     />
                     <TextField type="number" label="Required Buy Quantity" value={buyQty} onChange={setBuyQty} autoComplete="off" />
                     <ProductPicker
-                        label="Get Product (the discounted item)"
+                        label="Get Product (the discounted items)"
                         selectedIds={getVariantIdList}
                         onChange={setGetVariantIdList}
-                        multiple={false}
+                        multiple={true}
                         resourceType="variant"
-                        helpText="Select the product the customer gets discounted"
+                        helpText="Select the product(s) the customer gets discounted"
                     />
                     <FormLayout.Group>
                         <Select

@@ -31,5 +31,8 @@
     "@shopify/app": "^3.58.2",
     "@shopify/cli": "^3.90.1",
     "concurrently": "^9.2.1"
+  },
+  "engines": {
+    "node": "^20.0.0"
   }
 }
