@@ -12,7 +12,7 @@ services:
       - key: NODE_ENV
         value: production
       - key: DATABASE_URL
-        value: "file:/data/dev.db"
+        value: "file:///data/dev.db"
       - key: SESSION_DB_PATH
         value: "/data/session_db.sqlite"
       - key: PORT

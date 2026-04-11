@@ -64,6 +64,16 @@ function totalCartQuantity(input: RunInput): number {
   return total;
 }
 
+function normalizeGid(id: string): string {
+  if (!id) return "";
+  const match = id.match(/\/(\d+)$/);
+  return match ? match[1] : id;
+}
+
+function gidMatch(storedId: string, cartId: string): boolean {
+  return normalizeGid(storedId) === normalizeGid(cartId);
+}
+
 // ── Handlers ─────────────────────────────────────────────────────────
 
 function handleBasic(config: BasicConfig, input: RunInput): FunctionRunResult {
@@ -77,7 +87,7 @@ function handleBasic(config: BasicConfig, input: RunInput): FunctionRunResult {
   for (const line of input.cart.lines) {
     if (line.merchandise.__typename === "ProductVariant") {
       const variantId = (line.merchandise as any).id;
-      if (variantId === config.targetVariantId) {
+      if (gidMatch(variantId, config.targetVariantId)) {
         targets.push({ productVariant: { id: variantId, quantity: line.quantity } });
       }
     }
@@ -94,7 +104,7 @@ function handleBasic(config: BasicConfig, input: RunInput): FunctionRunResult {
     // Collect the exact total cost of the targeted items
     let targetTotalCost = 0;
     for (const line of input.cart.lines) {
-      if (line.merchandise.__typename === "ProductVariant" && (line.merchandise as any).id === config.targetVariantId) {
+      if (line.merchandise.__typename === "ProductVariant" && gidMatch((line.merchandise as any).id, config.targetVariantId)) {
         const itemPrice = parseFloat((line as any).cost?.amountPerQuantity?.amount ?? "0");
         targetTotalCost += itemPrice * line.quantity;
       }
@@ -224,11 +234,11 @@ function handleBogoGift(config: BogoGiftConfig, input: RunInput): FunctionRunRes
   const { buyQuantity, getQuantity } = config;
 
   // Support both single giftVariantId and mystery pool giftVariantIds
-  const giftPool: string[] = config.giftVariantIds?.length
+  const giftPool: string[] = (config.giftVariantIds?.length
     ? config.giftVariantIds
     : config.giftVariantId
       ? [config.giftVariantId]
-      : [];
+      : []) as string[];
 
   if (!buyQuantity || !getQuantity || !giftPool.length) return EMPTY_DISCOUNT;
 
@@ -255,7 +265,7 @@ function handleBogoGift(config: BogoGiftConfig, input: RunInput): FunctionRunRes
     if (line.merchandise.__typename === "ProductVariant") {
       const variantId = (line.merchandise as any).id;
       // Skip gift variants from BOGO calculation
-      if (giftPool.includes(variantId)) continue;
+      if (giftPool.some(id => gidMatch(id, variantId))) continue;
       const remaining = bogoItemsToDiscount - discountedCount;
       const qty = Math.min(line.quantity, remaining);
       bogoTargets.push({ productVariant: { id: variantId, quantity: qty } });
@@ -277,7 +287,7 @@ function handleBogoGift(config: BogoGiftConfig, input: RunInput): FunctionRunRes
     for (const line of input.cart.lines) {
       if (line.merchandise.__typename === "ProductVariant") {
         const variantId = (line.merchandise as any).id;
-        if (variantId === giftId) {
+        if (gidMatch(variantId, giftId)) {
           discounts.push({
             targets: [{ productVariant: { id: variantId, quantity: 1 } }],
             // @ts-ignore
@@ -307,7 +317,7 @@ function handleBundleGift(config: BundleGiftConfig, input: RunInput): FunctionRu
   for (const line of input.cart.lines) {
     if (line.merchandise.__typename === "ProductVariant") {
       const variantId = (line.merchandise as any).id;
-      if (variantId !== giftVariantId) {
+      if (!gidMatch(variantId, giftVariantId)) {
         nonGiftQty += line.quantity;
       }
     }
@@ -319,7 +329,7 @@ function handleBundleGift(config: BundleGiftConfig, input: RunInput): FunctionRu
   for (const line of input.cart.lines) {
     if (line.merchandise.__typename === "ProductVariant") {
       const variantId = (line.merchandise as any).id;
-      if (variantId === giftVariantId) {
+      if (gidMatch(variantId, giftVariantId)) {
         return {
           discounts: [{
             targets: [{ productVariant: { id: variantId, quantity: 1 } }],
@@ -353,8 +363,8 @@ function handleBundlePriceGift(config: BundlePriceGiftConfig, input: RunInput): 
     if (line.merchandise.__typename === "ProductVariant") {
       const variantId = (line.merchandise as any).id;
       const productId = (line.merchandise as any).product?.id ?? "";
-      if (variantId === giftVariantId) continue; // skip gift
-      if (hasBundleFilter && !bundleProductIds!.includes(productId)) continue;
+      if (gidMatch(variantId, giftVariantId)) continue; // skip gift
+      if (hasBundleFilter && !bundleProductIds!.some(id => gidMatch(id, productId))) continue;
       bundleLines.push({
         variantId,
         productId,
@@ -401,7 +411,7 @@ function handleBundlePriceGift(config: BundlePriceGiftConfig, input: RunInput): 
   for (const line of input.cart.lines) {
     if (line.merchandise.__typename === "ProductVariant") {
       const variantId = (line.merchandise as any).id;
-      if (variantId === giftVariantId) {
+      if (gidMatch(variantId, giftVariantId)) {
         discounts.push({
           targets: [{ productVariant: { id: variantId, quantity: 1 } }],
           // @ts-ignore

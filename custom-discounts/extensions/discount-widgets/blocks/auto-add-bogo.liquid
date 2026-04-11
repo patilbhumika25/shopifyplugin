@@ -1,305 +1,133 @@
 {% comment %}
   Auto-Add BOGO Gift (App Embed Block)
-  Automatically adds the "Get" product to the cart when the customer reaches the "Buy" requirements.
+  Automatically adds the "Get" product to the cart when "Buy" requirements are met.
+  Now supports multiple active BOGO/Combo offers.
 {% endcomment %}
 
 {% if block.settings.enable_bogo_auto_add %}
   {% assign metafield_config = shop.metafields.custom_discounts.bogo_config.value %}
   <script>
     (function() {
-      const rawMetafieldConfig = {{ metafield_config | json }};
+      const rawConfigs = {{ metafield_config | json }};
+      const ALL_CONFIGS = Array.isArray(rawConfigs) ? rawConfigs : (rawConfigs && Object.keys(rawConfigs).length > 0 ? [rawConfigs] : []);
       
-      if (!rawMetafieldConfig || Object.keys(rawMetafieldConfig).length === 0) {
-        console.log('[Auto-BOGO] No active BOGO configured in the backend. Exiting.');
-        return;
-      }
-      
-      // We support DIFFERENT_PRODUCT and BASIC for specific auto-adds.
-      // MIX_MATCH, MIX_MATCH_BOGO, COLLECTION_VARIANT_SCOPED, VARIANT_SCOPED are excluded because the customer chooses their own free item from a pool.
-      const validTypes = ['DIFFERENT_PRODUCT', 'BOGO_GIFT', 'BUNDLE_GIFT', 'BUNDLE_PRICE_GIFT', 'BASIC'];
-      if (!validTypes.includes(rawMetafieldConfig.configType)) {
-        console.log(`[Auto-BOGO] BOGO is ${rawMetafieldConfig.configType}. No auto-add required.`);
+      if (ALL_CONFIGS.length === 0) {
+        console.log('[Auto-BOGO] No active BOGO offers. Exiting.');
         return;
       }
 
-      let CONFIG = {
-        buyVariantIds: [],
-        eligibleProductIds: [],
-        eligibleVariantIds: [],
-        buyProductIds: [],
-        getProductIds: [],
-        scopedProductIds: [],
-        scopedVariantIds: [],
-        bundleProductIds: [],
-        getVariantId: null,
-        buyQuantity: 1,
-        getQuantity: 1, // Usually 1 for BOGO Get Y
-        propertyKey: '_custom_auto_bogo',
-        configType: rawMetafieldConfig.configType
-      };
+      function parseConfig(raw) {
+        const c = {
+          offerId: raw.offerId || 'unknown',
+          configType: raw.configType,
+          buyVariantIds: [],
+          eligibleProductIds: [],
+          eligibleVariantIds: [],
+          buyProductIds: [],
+          getProductIds: [],
+          bundleProductIds: [],
+          getVariantId: null,
+          buyQuantity: 1,
+          getQuantity: 1,
+          propertyKey: `_custom_bogo_${raw.offerId || 'auto'}`
+        };
 
-      // 1. Parse IDs (Variant and Product)
-      if (Array.isArray(rawMetafieldConfig.buyVariantIds)) {
-        CONFIG.buyVariantIds = rawMetafieldConfig.buyVariantIds.map(id => {
-          const m = (id || '').match(/ProductVariant\/(\d+)/);
-          return m ? parseInt(m[1], 10) : parseInt(id, 10);
-        }).filter(id => !isNaN(id));
-      }
-      if (Array.isArray(rawMetafieldConfig.eligibleProductIds)) {
-        CONFIG.eligibleProductIds = rawMetafieldConfig.eligibleProductIds.map(id => {
-          const m = (id || '').match(/Product\/(\d+)/);
-          return m ? parseInt(m[1], 10) : parseInt(id, 10);
-        }).filter(id => !isNaN(id));
-      }
-      if (Array.isArray(rawMetafieldConfig.eligibleVariantIds)) {
-        CONFIG.eligibleVariantIds = rawMetafieldConfig.eligibleVariantIds.map(id => {
-          const m = (id || '').match(/ProductVariant\/(\d+)/);
-          return m ? parseInt(m[1], 10) : parseInt(id, 10);
-        }).filter(id => !isNaN(id));
-      }
-      // MIX_MATCH_BOGO: parse buyProductIds (Collection A) and getProductIds (Collection B)
-      if (Array.isArray(rawMetafieldConfig.buyProductIds)) {
-        CONFIG.buyProductIds = rawMetafieldConfig.buyProductIds.map(id => {
-          const m = (id || '').match(/Product\/(\d+)/);
-          return m ? parseInt(m[1], 10) : parseInt(id, 10);
-        }).filter(id => !isNaN(id));
-      }
-      if (Array.isArray(rawMetafieldConfig.getProductIds)) {
-        CONFIG.getProductIds = rawMetafieldConfig.getProductIds.map(id => {
-          const m = (id || '').match(/Product\/(\d+)/);
-          return m ? parseInt(m[1], 10) : parseInt(id, 10);
-        }).filter(id => !isNaN(id));
-      }
-      // COLLECTION_VARIANT_SCOPED: parse scopedProductIds and scopedVariantIds
-      if (Array.isArray(rawMetafieldConfig.scopedProductIds)) {
-        CONFIG.scopedProductIds = rawMetafieldConfig.scopedProductIds.map(id => {
-          const m = (id || '').match(/Product\/(\d+)/);
-          return m ? parseInt(m[1], 10) : parseInt(id, 10);
-        }).filter(id => !isNaN(id));
-      }
-      if (Array.isArray(rawMetafieldConfig.scopedVariantIds)) {
-        CONFIG.scopedVariantIds = rawMetafieldConfig.scopedVariantIds.map(id => {
-          const m = (id || '').match(/ProductVariant\/(\d+)/);
-          return m ? parseInt(m[1], 10) : parseInt(id, 10);
-        }).filter(id => !isNaN(id));
-      }
-      // BUNDLE_PRICE_GIFT: parse bundleProductIds
-      if (Array.isArray(rawMetafieldConfig.bundleProductIds)) {
-        CONFIG.bundleProductIds = rawMetafieldConfig.bundleProductIds.map(id => {
-          const m = (id || '').match(/Product\/(\d+)/);
-          return m ? parseInt(m[1], 10) : parseInt(id, 10);
-        }).filter(id => !isNaN(id));
+        const giftId = raw.getVariantId || raw.giftVariantId || '';
+        const mGet = giftId.match(/ProductVariant\/(\d+)/);
+        c.getVariantId = mGet ? parseInt(mGet[1], 10) : parseInt(giftId, 10);
+
+        if (Array.isArray(raw.buyVariantIds)) {
+          c.buyVariantIds = raw.buyVariantIds.map(id => {
+            const m = (id || '').match(/ProductVariant\/(\d+)/);
+            return m ? parseInt(m[1], 10) : parseInt(id, 10);
+          }).filter(id => !isNaN(id));
+        }
+        if (Array.isArray(raw.buyProductIds)) {
+          c.buyProductIds = raw.buyProductIds.map(id => {
+            const m = (id || '').match(/Product\/(\d+)/);
+            return m ? parseInt(m[1], 10) : parseInt(id, 10);
+          }).filter(id => !isNaN(id));
+        }
+        if (Array.isArray(raw.bundleProductIds)) {
+          c.bundleProductIds = raw.bundleProductIds.map(id => {
+            const m = (id || '').match(/Product\/(\d+)/);
+            return m ? parseInt(m[1], 10) : parseInt(id, 10);
+          }).filter(id => !isNaN(id));
+        }
+
+        c.buyQuantity = parseInt(raw.buyQuantity || raw.bundleQuantity || 1, 10);
+        c.getQuantity = parseInt(raw.getQuantity || 1, 10);
+        
+        return c;
       }
 
-      // 2. Parse Get Variant ID
-      const targetGetId = rawMetafieldConfig.getVariantId || rawMetafieldConfig.giftVariantId || '';
-      const getVariantMatch = targetGetId.match(/ProductVariant\/(\d+)/);
-      if (getVariantMatch) {
-         CONFIG.getVariantId = parseInt(getVariantMatch[1], 10);
-      } else if (targetGetId) {
-         CONFIG.getVariantId = parseInt(targetGetId, 10);
-      }
-
-      if (rawMetafieldConfig.buyQuantity) {
-        CONFIG.buyQuantity = parseInt(rawMetafieldConfig.buyQuantity, 10);
-      } else if (rawMetafieldConfig.bundleQuantity) {
-        CONFIG.buyQuantity = parseInt(rawMetafieldConfig.bundleQuantity, 10);
-      }
-      
-      if (rawMetafieldConfig.getQuantity) {
-          CONFIG.getQuantity = parseInt(rawMetafieldConfig.getQuantity, 10);
-      }
-
-      // Check if it has an array of gift variants (mystery pool)
-      if (Array.isArray(rawMetafieldConfig.giftVariantIds) && rawMetafieldConfig.giftVariantIds.length > 0 && !CONFIG.getVariantId) {
-         // pick random from pool for auto-add
-         const randomGift = rawMetafieldConfig.giftVariantIds[Math.floor(Math.random() * rawMetafieldConfig.giftVariantIds.length)];
-         const m = randomGift.match(/ProductVariant\/(\d+)/);
-         CONFIG.getVariantId = m ? parseInt(m[1], 10) : parseInt(randomGift, 10);
-      }
-      
-      if (!CONFIG.getVariantId && !['BASIC'].includes(CONFIG.configType)) {
-        console.warn('[Auto-BOGO] No getVariant specified and not a dynamic BOGO. Exiting.');
-        return;
-      }
-
-      console.log('[Auto-BOGO] Block loaded. Config:', JSON.stringify(CONFIG));
+      const PARSED_OFFERS = ALL_CONFIGS.map(parseConfig);
+      console.log(`[Auto-BOGO] Loaded ${PARSED_OFFERS.length} active offer(s).`);
 
       let isProcessing = false;
-
-      // Prevent infinite reload loops
       const RETRY_KEY = 'auto_bogo_retries';
-      const RETRY_TS_KEY = 'auto_bogo_retry_ts';
       const MAX_RETRIES = 3;
-      const RETRY_WINDOW_MS = 10000;
-
-      function getRetryCount() {
-        const ts = parseInt(sessionStorage.getItem(RETRY_TS_KEY) || '0');
-        if (Date.now() - ts > RETRY_WINDOW_MS) {
-          sessionStorage.setItem(RETRY_KEY, '0');
-          return 0;
-        }
-        return parseInt(sessionStorage.getItem(RETRY_KEY) || '0');
-      }
-
-      function incrementRetry() {
-        const count = getRetryCount() + 1;
-        sessionStorage.setItem(RETRY_KEY, String(count));
-        sessionStorage.setItem(RETRY_TS_KEY, String(Date.now()));
-        return count;
-      }
-
-      function resetRetries() {
-        sessionStorage.setItem(RETRY_KEY, '0');
-      }
 
       async function evaluateCart() {
         if (isProcessing) return;
-        if (getRetryCount() >= MAX_RETRIES) {
-          console.warn('[Auto-BOGO] Max retries reached. Pausing to prevent loop.');
-          return;
-        }
+        const retries = parseInt(sessionStorage.getItem(RETRY_KEY) || '0');
+        if (retries >= MAX_RETRIES) return;
         
         try {
           isProcessing = true;
-          console.log('[Auto-BOGO] Evaluating cart...');
           const res = await fetch('/cart.js', { cache: 'no-store' });
           const cart = await res.json();
 
-          let buyItemsCount = 0;
-          let getItemsInCart = false;
-          let giftQty = 0;
-          let giftLineItemKey = null;
-          
-          cart.items.forEach(item => {
-            // Check if this is the auto-added gift
-            if (item.properties && item.properties[CONFIG.propertyKey] === 'true') {
-              getItemsInCart = true;
-              giftLineItemKey = item.key;
-              giftQty = item.quantity;
-            } else {
-              // Count "Buy" items based on configuration
-              let isBuyItem = false;
-              if (CONFIG.configType === 'BUNDLE_PRICE_GIFT' && CONFIG.bundleProductIds.length > 0) {
-                  // Bundle with specific product scope
-                  isBuyItem = CONFIG.bundleProductIds.includes(item.product_id);
-                  if (isBuyItem) buyItemsCount += item.quantity;
-              } else if (CONFIG.buyVariantIds && CONFIG.buyVariantIds.length > 0) {
-                  isBuyItem = CONFIG.buyVariantIds.includes(item.variant_id);
-                  if (isBuyItem) {
-                      buyItemsCount += item.quantity;
-                  }
-              } else {
-                  // Fallback: everything is a buy item except the get item
-                  isBuyItem = (item.variant_id !== CONFIG.getVariantId);
-                  if (isBuyItem) {
-                      buyItemsCount += item.quantity;
-                      if (!CONFIG.getVariantId) CONFIG.getVariantId = item.variant_id;
-                  }
-              }
-            }
-          });
+          const updates = { add: [], change: {} };
+          let needsUpdate = false;
 
-          if (!CONFIG.getVariantId) {
-             console.log('[Auto-BOGO] No dynamically eligible variant found to use as gift.');
-             return;
+          for (const CONFIG of PARSED_OFFERS) {
+            let buyItemsCount = 0;
+            let giftQty = 0;
+            let giftKey = null;
+
+            cart.items.forEach(item => {
+              if (item.properties && item.properties[CONFIG.propertyKey] === 'true') {
+                giftQty = item.quantity;
+                giftKey = item.key;
+              } else {
+                let isBuy = false;
+                if (CONFIG.configType === 'BUNDLE_PRICE_GIFT' && CONFIG.bundleProductIds.length > 0) {
+                  isBuy = CONFIG.bundleProductIds.includes(item.product_id);
+                } else if (CONFIG.buyVariantIds.length > 0) {
+                  isBuy = CONFIG.buyVariantIds.includes(item.variant_id);
+                } else if (CONFIG.buyProductIds.length > 0) {
+                  isBuy = CONFIG.buyProductIds.includes(item.product_id);
+                } else {
+                  isBuy = (item.variant_id !== CONFIG.getVariantId);
+                }
+                if (isBuy) buyItemsCount += item.quantity;
+              }
+            });
+
+            const timesTriggered = Math.floor(buyItemsCount / CONFIG.buyQuantity);
+            const targetQty = timesTriggered * CONFIG.getQuantity;
+
+            if (targetQty > giftQty && CONFIG.getVariantId) {
+              updates.add.push({ id: CONFIG.getVariantId, quantity: targetQty - giftQty, properties: { [CONFIG.propertyKey]: 'true', '_hidden': 'true' } });
+              needsUpdate = true;
+            } else if (targetQty < giftQty && giftKey) {
+              updates.change[giftKey] = targetQty;
+              needsUpdate = true;
+            }
           }
 
-          // Calculate how many times the trigger is met
-          const timesTriggered = Math.floor(buyItemsCount / CONFIG.buyQuantity);
-          const targetGiftQty = timesTriggered * CONFIG.getQuantity;
-          const qualifies = targetGiftQty > 0;
-
-          console.log(`[Auto-BOGO] Buy Items: ${buyItemsCount} | Target Qty: ${targetGiftQty} | In Cart: ${giftQty}`);
-
-          if (qualifies && giftQty < targetGiftQty) {
-            const qtyToAdd = targetGiftQty - giftQty;
-            console.log(`[Auto-BOGO] Adding ${qtyToAdd} gift variant(s): ` + CONFIG.getVariantId);
-            
-            // First time adding or updating quantity
-            let addRes;
-            if (getItemsInCart) {
-                // Change existing line item quantity
-                addRes = await fetch('/cart/change.js', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        id: giftLineItemKey,
-                        quantity: targetGiftQty
-                    })
-                });
-            } else {
-                // Add new line item
-                addRes = await fetch('/cart/add.js', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    items: [{
-                      id: CONFIG.getVariantId,
-                      quantity: targetGiftQty,
-                      properties: { 
-                          [CONFIG.propertyKey]: 'true',
-                          '_hidden': 'true'
-                      }
-                    }]
-                  })
-                });
+          if (needsUpdate) {
+            if (updates.add.length > 0) {
+              await fetch('/cart/add.js', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ items: updates.add }) });
             }
-            
-            if (!addRes.ok) {
-              const errorText = await addRes.text();
-              console.error('[Auto-BOGO] Failed to add gift:', addRes.status, errorText);
-              incrementRetry();
-              return; // Halt to prevent reload loop
+            for (const [key, qty] of Object.entries(updates.change)) {
+              await fetch('/cart/change.js', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ id: key, quantity: qty }) });
             }
-
-            resetRetries();
-            window.dispatchEvent(new Event('cart:updated'));
+            sessionStorage.setItem(RETRY_KEY, (retries + 1).toString());
             location.reload();
-            
-          } else if (qualifies && giftQty > targetGiftQty) {
-            console.log(`[Auto-BOGO] Reducing gift quantity to ${targetGiftQty}`);
-            const changeRes = await fetch('/cart/change.js', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                id: giftLineItemKey,
-                quantity: targetGiftQty
-              })
-            });
-            
-            if (!changeRes.ok) {
-              const errorText = await changeRes.text();
-              console.error('[Auto-BOGO] Failed to reduce quantity:', changeRes.status, errorText);
-              incrementRetry();
-              return;
-            }
-            
-            resetRetries();
-            window.dispatchEvent(new Event('cart:updated'));
-            location.reload();
-
-          } else if (!qualifies && getItemsInCart && giftLineItemKey) {
-            console.log('[Auto-BOGO] Does not qualify anymore. Removing gift.');
-            const changeRes = await fetch('/cart/change.js', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                id: giftLineItemKey,
-                quantity: 0
-              })
-            });
-            
-            if (!changeRes.ok) {
-              const errorText = await changeRes.text();
-              console.error('[Auto-BOGO] Failed to remove gift:', changeRes.status, errorText);
-              incrementRetry();
-              return;
-            }
-            
-            resetRetries();
-            window.dispatchEvent(new Event('cart:updated'));
-            location.reload();
+          } else {
+            sessionStorage.setItem(RETRY_KEY, '0');
           }
         } catch (e) {
           console.error('[Auto-BOGO] Error:', e);
@@ -308,39 +136,18 @@
         }
       }
 
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', evaluateCart);
-      } else {
-        evaluateCart();
-      }
+      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', evaluateCart);
+      else evaluateCart();
 
-      let evaluateTimeout = null;
-      function debouncedEvaluateCart() {
-        if (evaluateTimeout) clearTimeout(evaluateTimeout);
-        evaluateTimeout = setTimeout(() => {
-          evaluateCart();
-        }, 1000);
-      }
+      let timeout = null;
+      function debounced() { if (timeout) clearTimeout(timeout); timeout = setTimeout(evaluateCart, 1000); }
 
       const originalFetch = window.fetch;
       window.fetch = async function() {
         const response = await originalFetch.apply(this, arguments);
-        const urlReq = arguments[0];
-        const url = typeof urlReq === 'string' ? urlReq : (urlReq?.url || '');
-        if (url && url.includes('/cart') && !url.includes('/cart.js')) {
-          debouncedEvaluateCart();
-        }
+        const url = typeof arguments[0] === 'string' ? arguments[0] : (arguments[1]?.url || arguments[0]?.url || '');
+        if (url.includes('/cart') && !url.includes('/cart.js')) debounced();
         return response;
-      };
-
-      const originalXHR = window.XMLHttpRequest.prototype.send;
-      window.XMLHttpRequest.prototype.send = function() {
-        this.addEventListener('load', function() {
-          if (this.responseURL && this.responseURL.includes('/cart')) {
-            debouncedEvaluateCart();
-          }
-        });
-        return originalXHR.apply(this, arguments);
       };
     })();
   </script>
@@ -351,12 +158,7 @@
   "name": "Auto-Add BOGO Gift",
   "target": "body",
   "settings": [
-    {
-      "type": "checkbox",
-      "id": "enable_bogo_auto_add",
-      "label": "Enable BOGO Auto-Add",
-      "default": true
-    }
+    { "type": "checkbox", "id": "enable_bogo_auto_add", "label": "Enable BOGO Auto-Add", "default": true }
   ]
 }
 {% endschema %}

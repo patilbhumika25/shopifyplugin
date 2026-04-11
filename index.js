@@ -426,14 +426,7 @@ async function findFunctionId(client, handle) {
   const query = `
     query {
       shopifyFunctions(first: 25) {
-        nodes {
-          id
-          title
-          apiType
-          app {
-            handle
-          }
-        }
+        nodes { id title apiType app { handle } }
       }
     }
   `;
@@ -441,25 +434,25 @@ async function findFunctionId(client, handle) {
     const response = await client.request(query);
     const functions = response.data?.shopifyFunctions?.nodes || [];
 
-    // Debug: log all available functions
-    console.log(`🔍 Looking for function: "${handle}"`);
-    console.log(`🔍 Available functions (${functions.length}):`);
-    functions.forEach(f => {
-      console.log(`   - id: ${f.id}, title: "${f.title}", apiType: ${f.apiType}, appHandle: ${f.app?.handle}`);
-    });
-
-    // Match by title, app handle, or ID
-    const searchTerm = handle.replaceAll('-', ' ').toLowerCase();
-    const found = functions.find(f =>
-      f.title?.toLowerCase().includes(searchTerm) ||
-      f.title?.toLowerCase().includes(handle) ||
-      f.app?.handle?.toLowerCase() === handle ||
-      f.id?.includes(handle)
-    );
-
-    if (found) {
-      console.log(`✅ Matched function: ${found.id} (${found.title})`);
+    // 1. Prefer Exact Handle Match (best if app handle is available)
+    let found = functions.find(f => f.app?.handle === handle);
+    
+    // 2. Fallback: Exact Title Match (case-insensitive, ignores hyphens)
+    if (!found) {
+      const exactTitle = handle.replaceAll('-', ' ').toLowerCase();
+      found = functions.find(f => f.title?.toLowerCase() === exactTitle || f.title?.toLowerCase() === handle.toLowerCase());
     }
+
+    // 3. Last Resort: Partial match
+    if (!found) {
+      const searchTerm = handle.replaceAll('-', ' ').toLowerCase();
+      found = functions.find(f =>
+        f.title?.toLowerCase().includes(searchTerm) ||
+        f.id?.includes(handle)
+      );
+    }
+
+    if (found) console.log(`✅ Matched function: ${found.id} (${found.title})`);
     return found?.id || null;
   } catch (err) {
     console.error('Error finding function ID:', err.message);
@@ -682,7 +675,50 @@ async function updateShopMetafield(client, key, configurationJson) {
 // Clear the shop metafield so the App Embed stops triggering auto-adds
 async function clearShopMetafield(client, key) {
   console.log(`Clearing ${key} metafield...`);
-  await updateShopMetafield(client, key, "{}");
+  await updateShopMetafield(client, key, "[]");
+}
+
+// Aggregates all active offers of a given type and syncs them to the storefront metafield
+async function syncAllOffersToStorefront(client, shop, type) {
+  const keyMap = { 'FREE_GIFT': 'free_gift_config', 'BOGO': 'bogo_config', 'COMBO': 'bogo_config' };
+  const key = keyMap[type];
+  if (!key) return;
+
+  console.log(`[SYNC] Updating storefront configs for ${type} in shop ${shop}...`);
+  
+  const activeOffers = await prisma.offer.findMany({
+    where: { 
+      shop, 
+      type: { in: type === 'FREE_GIFT' ? ['FREE_GIFT'] : ['BOGO', 'COMBO'] }, 
+      status: 'ACTIVE' 
+    },
+  });
+
+  if (activeOffers.length === 0) {
+    await clearShopMetafield(client, key);
+    return;
+  }
+
+  const configs = [];
+  for (const offer of activeOffers) {
+    try {
+      let config = JSON.parse(offer.configurationJson);
+      config.offerId = offer.id; // Include ID for client-side tracking
+      
+      // Enrich gift options for Free Gift if necessary
+      if (offer.type === 'FREE_GIFT' && (config.configType === 'ORDER_VALUE_PICK_ONE' || config.configType === 'ORDER_VALUE_MULTI_PICK')) {
+        if (Array.isArray(config.giftVariantIds) && config.giftVariantIds.length > 0) {
+          const giftOptions = await enrichGiftVariants(client, config.giftVariantIds);
+          if (giftOptions.length > 0) config.giftOptions = giftOptions;
+        }
+      }
+      configs.push(config);
+    } catch (e) {
+      console.error(`[SYNC] Failed to parse config for offer ${offer.id}:`, e.message);
+    }
+  }
+
+  await updateShopMetafield(client, key, JSON.stringify(configs));
 }
 
 // Enrich gift variant IDs with product title and image URL for storefront widgets
@@ -826,23 +862,9 @@ app.post('/api/offers', async (req, res) => {
         }
       }
 
-      // Sync Metafields for App Embeds
-      if (type === 'FREE_GIFT') {
-        // Enrich gift options with product info for ORDER_VALUE_PICK_ONE / ORDER_VALUE_MULTI_PICK
-        let enrichedConfig = JSON.parse(configStr);
-        if (
-          (enrichedConfig.configType === 'ORDER_VALUE_PICK_ONE' || enrichedConfig.configType === 'ORDER_VALUE_MULTI_PICK') &&
-          Array.isArray(enrichedConfig.giftVariantIds) && enrichedConfig.giftVariantIds.length > 0
-        ) {
-          const giftOptions = await enrichGiftVariants(client, enrichedConfig.giftVariantIds);
-          if (giftOptions.length > 0) {
-            enrichedConfig.giftOptions = giftOptions;
-            configStr = JSON.stringify(enrichedConfig);
-          }
-        }
-        await updateShopMetafield(client, 'free_gift_config', configStr);
-      } else if (type === 'BOGO' || type === 'COMBO') {
-        await updateShopMetafield(client, 'bogo_config', configStr);
+      // Sync all active offers of this type to Storefront Metafields
+      if (type === 'FREE_GIFT' || type === 'BOGO' || type === 'COMBO') {
+        await syncAllOffersToStorefront(client, shop, type);
       }
     } else {
       console.log('ℹ️ No GraphQL session — offer saved locally only (Shopify discount not created)');
@@ -928,31 +950,15 @@ app.put('/api/offers/:id', async (req, res) => {
       }
     });
 
-    // Sync Metafields for App Embeds
-    if ((type === 'FREE_GIFT' || type === 'BOGO' || type === 'COMBO') && configurationJson) {
+    // Sync Storefront Metafields (aggregates all active offers)
+    if (type === 'FREE_GIFT' || type === 'BOGO' || type === 'COMBO' || status !== undefined) {
       try {
         const client = await getGraphQLClient(req, res, shop);
         if (client) {
-          const key = type === 'FREE_GIFT' ? 'free_gift_config' : 'bogo_config';
-          let metafieldValue = configurationJson;
-          // Enrich gift options for ORDER_VALUE_PICK_ONE / ORDER_VALUE_MULTI_PICK
-          if (type === 'FREE_GIFT') {
-            const parsed = typeof configurationJson === 'string' ? JSON.parse(configurationJson) : configurationJson;
-            if (
-              (parsed.configType === 'ORDER_VALUE_PICK_ONE' || parsed.configType === 'ORDER_VALUE_MULTI_PICK') &&
-              Array.isArray(parsed.giftVariantIds) && parsed.giftVariantIds.length > 0
-            ) {
-              const giftOptions = await enrichGiftVariants(client, parsed.giftVariantIds);
-              if (giftOptions.length > 0) {
-                parsed.giftOptions = giftOptions;
-                metafieldValue = JSON.stringify(parsed);
-              }
-            }
-          }
-          await updateShopMetafield(client, key, metafieldValue);
+          await syncAllOffersToStorefront(client, shop, type || existingOffer.type);
         }
       } catch (err) {
-        console.error('⚠️ Shopify metafield sync error:', err.message);
+        console.error('⚠️ Shopify storefront sync error:', err.message);
       }
     }
 
@@ -1128,16 +1134,9 @@ app.patch('/api/offers/:id/status', async (req, res) => {
           }
         }
 
-        // 2. Clear or Restore Metafield for App Embeds
+        // 2. Sync all active offers to Storefront Metafields
         if (existing.type === 'FREE_GIFT' || existing.type === 'BOGO' || existing.type === 'COMBO') {
-          const key = existing.type === 'FREE_GIFT' ? 'free_gift_config' : 'bogo_config';
-          if (status === 'ACTIVE' && oldStatus !== 'ACTIVE') {
-            console.log(`Restoring ${key} configuration...`);
-            await updateShopMetafield(client, key, existing.configurationJson);
-          } else if (status !== 'ACTIVE' && oldStatus === 'ACTIVE') {
-            console.log(`Offer disabled: Clearing ${key}...`);
-            await clearShopMetafield(client, key);
-          }
+          await syncAllOffersToStorefront(client, shop, existing.type);
         }
       }
     } catch (syncErr) {
@@ -1180,11 +1179,9 @@ app.delete('/api/offers/:id', async (req, res) => {
         console.log(`🗑️ Shopify discount deleted: ${offer.shopifyDiscountId}`);
       }
 
-      // Clear metafield if a relevant offer is deleted
+      // Sync storefront configs (removing this offer from the list)
       if (offer.type === 'FREE_GIFT' || offer.type === 'BOGO' || offer.type === 'COMBO') {
-        const key = offer.type === 'FREE_GIFT' ? 'free_gift_config' : 'bogo_config';
-        console.log(`Offer deleted: Clearing ${key}...`);
-        await clearShopMetafield(client, key);
+        await syncAllOffersToStorefront(client, shop, offer.type);
       }
     }
 

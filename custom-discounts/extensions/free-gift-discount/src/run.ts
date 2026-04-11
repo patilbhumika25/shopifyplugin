@@ -85,13 +85,22 @@ type Configuration =
   | OrderValuePickOneConfig
   | OrderValueMultiPickConfig;
 
-// ── Helper ───────────────────────────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────────────────
+function normalizeGid(id: string): string {
+  if (!id) return "";
+  const match = id.match(/\/(\d+)$/);
+  return match ? match[1] : id;
+}
+
+function gidMatch(storedId: string, cartId: string): boolean {
+  return normalizeGid(storedId) === normalizeGid(cartId);
+}
 
 function findGiftInCart(input: RunInput, giftVariantId: string): Target | null {
   for (const line of input.cart.lines) {
     if (line.merchandise.__typename === "ProductVariant") {
       const variantId = (line.merchandise as any).id;
-      if (variantId === giftVariantId) {
+      if (gidMatch(variantId, giftVariantId)) {
         return { productVariant: { id: variantId, quantity: 1 } };
       }
     }
@@ -100,14 +109,12 @@ function findGiftInCart(input: RunInput, giftVariantId: string): Target | null {
 }
 
 function cartSubtotal(input: RunInput, excludeVariantIds: string[] = []): number {
-  // Manually sum up the cart excluding certain variants
-  // We use amountPerQuantity.amount to evaluate against original, undiscounted price
   let total = 0;
   for (const line of input.cart.lines) {
     if (line.merchandise.__typename === "ProductVariant") {
       const variantId = (line.merchandise as any).id;
-      if (!excludeVariantIds.includes(variantId)) {
-        // Use line quantity * cost per item
+      const isExcluded = excludeVariantIds.some(id => gidMatch(id, variantId));
+      if (!isExcluded) {
         const costPerItem = parseFloat((line as any).cost?.amountPerQuantity?.amount ?? "0");
         total += costPerItem * line.quantity;
       }
@@ -147,7 +154,7 @@ function handleProductPurchase(config: ProductPurchaseConfig, input: RunInput): 
   for (const line of input.cart.lines) {
     if (line.merchandise.__typename === "ProductVariant") {
       const productId = (line.merchandise as any).product?.id ?? "";
-      if (productId === config.triggerProductId) {
+      if (gidMatch(productId, config.triggerProductId)) {
         triggerFound = true;
         break;
       }
@@ -170,7 +177,7 @@ function handleMystery(config: MysteryConfig, input: RunInput): FunctionRunResul
   for (const line of input.cart.lines) {
     if (line.merchandise.__typename === "ProductVariant") {
       const variantId = (line.merchandise as any).id;
-      if (!config.giftVariantIds.includes(variantId)) {
+      if (!config.giftVariantIds.some(id => gidMatch(id, variantId))) {
         totalItems += line.quantity;
       }
     }
